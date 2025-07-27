@@ -19,7 +19,33 @@ authors = [
 ]
 requires-python = ">=3.8"
 dependencies = [
-  # Add your own dependencies here
+    # Core scientific computing
+    "numpy>=1.20.0,<2.0",
+    "scipy>=1.10.0",
+    "pandas>=1.5.0",
+    
+    # DNA/Genomics specific
+    "biopython>=1.80",
+    "pysam>=0.20.0",
+    "pyfaidx>=0.8.0",
+    
+    # Machine learning and AI
+    "torch>=2.0.0",
+    "transformers>=4.30.0",
+    "datasets>=2.10.0",
+    "tokenizers>=0.13.0",
+    
+    # Data processing and visualization
+    "matplotlib>=3.5.0",
+    "seaborn>=0.11.0",
+    "plotly>=5.0.0",
+    
+    # Utilities
+    "tqdm>=4.60.0",
+    "rich>=12.0.0",
+    "click>=8.0.0",
+    "pyyaml>=6.0",
+    "requests>=2.25.0",
 ]
 license = {file = "LICENSE"}
 
@@ -49,6 +75,39 @@ dev = [
     "sphinx-autobuild",
     "sphinx-autodoc-typehints==1.23.3",
     "packaging"
+]
+
+# Additional optional dependency groups
+ml = [
+    "scikit-learn>=1.0.0",
+    "optuna>=3.0.0",
+    "wandb>=0.15.0",
+    "tensorboard>=2.10.0",
+]
+
+gpu = [
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "torchmetrics>=0.10.0",
+]
+
+bio = [
+    "biopython>=1.80",
+    "pysam>=0.20.0",
+    "pyfaidx>=0.8.0",
+    "spliceai>=1.3.0",
+]
+
+viz = [
+    "matplotlib>=3.5.0",
+    "seaborn>=0.11.0",
+    "plotly>=5.0.0",
+    "bokeh>=3.0.0",
+]
+
+# Optional: Nucleotide Transformer (if available)
+nucleotide = [
+    "nucleotide-transformer>=0.0.1",
 ]
 
 [tool.setuptools.packages.find]
