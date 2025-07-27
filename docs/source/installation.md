@@ -1,23 +1,23 @@
 Installation
 ============
 
-**my-package** supports Python >= 3.8.
+**dna-distillation** supports Python >= 3.8.
 
 ## Installing with `pip`
 
-**my-package** is available [on PyPI](https://pypi.org/project/my-package/). Just run
+**dna-distillation** is available [on PyPI](https://pypi.org/project/dna-distillation/). Just run
 
 ```bash
-pip install my-package
+pip install dna-distillation
 ```
 
 ## Installing from source
 
-To install **my-package** from source, first clone [the repository](https://github.com/allenai/python-package-template):
+To install **dna-distillation** from source, first clone [the repository](https://github.com/kainoanishida/DNA-Distillation):
 
 ```bash
-git clone https://github.com/allenai/python-package-template.git
-cd python-package-template
+git clone https://github.com/kainoanishida/DNA-Distillation.git
+cd DNA-Distillation
 ```
 
 Then run
