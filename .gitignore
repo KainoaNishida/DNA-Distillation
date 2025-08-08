@@ -104,3 +104,12 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# SLURM job scripts (generated)
+slurm_*.sh
+
+# Test outputs and temporary directories
+test_outputs/
+test_distilled_models/
+test_multi_task_outputs/
+test_teacher_checkpoints/

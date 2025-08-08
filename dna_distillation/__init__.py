@@ -6,6 +6,7 @@ This package provides tools for:
 - Knowledge distillation from large nucleotide transformer models
 - Various neural network architectures optimized for DNA analysis
 - Data loading and preprocessing for genomics tasks
+- SLURM job management for HPC clusters
 """
 
 from .version import VERSION, VERSION_SHORT
@@ -38,6 +39,17 @@ from .data import (
 )
 from .distillation import (
     KnowledgeDistiller,
+    distill_for_task,
+    DistillationLoss,
+    precompute_teacher_logits,
+)
+from .utils import (
+    SLURMConfig,
+    create_training_job,
+    create_distillation_job,
+    create_multi_task_job,
+    get_default_slurm_configs,
+    submit_job,
 )
 
 __version__ = VERSION
@@ -63,4 +75,14 @@ __all__ = [
     "load_nucleotide_task",
     "get_num_labels", 
     "KnowledgeDistiller",
+    "distill_for_task",
+    "DistillationLoss",
+    "precompute_teacher_logits",
+    # SLURM utilities
+    "SLURMConfig",
+    "create_training_job",
+    "create_distillation_job",
+    "create_multi_task_job",
+    "get_default_slurm_configs",
+    "submit_job",
 ]
