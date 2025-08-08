@@ -2,26 +2,30 @@
 
 A comprehensive Python package for DNA sequence analysis and knowledge distillation from large nucleotide transformer models to efficient student models.
 
+## Summary
+
+DNA Distillation provides a complete toolkit for training and distilling DNA sequence models. It supports 18+ downstream tasks (chromatin state prediction, regulatory elements, splicing), multiple student architectures (BiLSTM, XLSTM, Mamba, Hyena, etc.), advanced knowledge distillation techniques, and HPC cluster integration via SLURM. The package offers one-line APIs for training (`dna.train_for_task("H3K27ac", "bilstm", "./outputs")`) and distillation (`dna.distill_for_task("H3K27ac", "bilstm", "./teacher_checkpoints", "./outputs")`), making it easy to create efficient, deployable models from large nucleotide transformers.
+
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PyPI version](https://badge.fury.io/py/dna-distillation.svg)](https://badge.fury.io/py/dna-distillation)
 
-## 🚀 Features
+## Features
 
-### **One-Line Training & Distillation**
+### One-Line Training & Distillation
 
 - **Training**: `dna.train_for_task("H3K27ac", "bilstm", "./outputs")`
 - **Distillation**: `dna.distill_for_task("H3K27ac", "bilstm", "./teacher_checkpoints", "./outputs")`
 - **SLURM Jobs**: `dna.create_training_job("H3K27ac", "bilstm", "./outputs")`
 
-### **Comprehensive Data Loading**
+### Comprehensive Data Loading
 
 - Support for 18+ downstream DNA sequence tasks
 - Automatic train/validation/test splitting
 - HuggingFace tokenizer integration
 - Memory-efficient dataset handling
 
-### **Advanced Knowledge Distillation**
+### Advanced Knowledge Distillation
 
 - **Multiple Loss Functions**: Combined CE+MSE, KL divergence, attention, feature distillation
 - **Precomputed Teacher Logits**: Memory-efficient offline computation
@@ -29,14 +33,14 @@ A comprehensive Python package for DNA sequence analysis and knowledge distillat
 - **Temperature Scaling**: Configurable distillation temperature
 - **Multi-Task Support**: Batch distillation across multiple tasks
 
-### **HPC Cluster Integration**
+### HPC Cluster Integration
 
 - **SLURM Job Management**: Automatic job script generation
 - **Pre-configured Setups**: GPU single/multi, CPU, debug configurations
 - **Cluster-Specific Optimization**: Customizable for different HPC environments
 - **Batch Job Submission**: Large-scale experiment management
 
-### **Student Model Architectures**
+### Student Model Architectures
 
 - **BiLSTM**: Bidirectional LSTM with attention
 - **XLSTM**: Extended LSTM with residual connections
@@ -47,7 +51,7 @@ A comprehensive Python package for DNA sequence analysis and knowledge distillat
 - **MLP**: Multi-layer perceptrons
 - **RNN**: Recurrent neural networks
 
-## 📦 Installation
+## Installation
 
 ### From PyPI (Recommended)
 
@@ -82,7 +86,7 @@ pip install dna-distillation[nucleotide]
 pip install dna-distillation[dev]
 ```
 
-## 🎯 Quick Start
+## Quick Start
 
 ### Basic Training
 
@@ -133,7 +137,7 @@ job_id = dna.submit_job(script_path)
 print(f"Job submitted: {job_id}")
 ```
 
-## 📚 Detailed Usage
+## Detailed Usage
 
 ### Data Loading
 
@@ -387,7 +391,7 @@ for script in job_scripts:
     print(f"Submitted {script}: {job_id}")
 ```
 
-## 🏗️ Architecture
+## Architecture
 
 ### Package Structure
 
@@ -449,7 +453,7 @@ dna_distillation/
 - **Submission**: Direct job submission integration
 - **Batch Processing**: Large-scale experiment management
 
-## 🔬 Supported Tasks
+## Supported Tasks
 
 The package supports 18+ downstream DNA sequence tasks:
 
@@ -480,7 +484,7 @@ The package supports 18+ downstream DNA sequence tasks:
 - `splice_sites_acceptor` - Acceptor sites
 - `splice_sites_donor` - Donor sites
 
-## 🎛️ Configuration
+## Configuration
 
 ### Training Configuration
 
@@ -533,7 +537,7 @@ slurm_config = dna.SLURMConfig(
 )
 ```
 
-## 🧪 Testing
+## Testing
 
 ### Run Tests
 
@@ -558,7 +562,7 @@ pytest --cov=dna_distillation
 python test_slurm_functionality.py
 ```
 
-## 📊 Performance
+## Performance
 
 ### Model Comparison
 
@@ -576,7 +580,7 @@ python test_slurm_functionality.py
 - **Memory Efficiency**: 5-20x less memory usage
 - **Performance Retention**: 90-95% of teacher performance
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
 
@@ -606,17 +610,17 @@ We use:
 - **isort** for import sorting
 - **mypy** for type checking
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **InstaDeepAI** for the nucleotide transformer models
 - **HuggingFace** for the transformers library
 - **Research Community** for the downstream task datasets
 
-## 📚 Citation
+## Citation
 
 If you use this package in your research, please cite:
 
@@ -629,7 +633,7 @@ If you use this package in your research, please cite:
 }
 ```
 
-## 🔗 Links
+## Links
 
 - **Documentation**: [ReadTheDocs](https://dna-distillation.readthedocs.io/)
 - **PyPI**: [dna-distillation](https://pypi.org/project/dna-distillation/)
