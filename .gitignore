@@ -49,3 +49,57 @@ __pycache__
 
 docs/build
 site/
+
+# Migration and development files
+MIGRATION_PLAN.md
+example_*.py
+test_*.py
+debug_*.py
+*.backup
+
+# Ruff cache
+.ruff_cache/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Output directories (user-generated)
+outputs/
+results/
+checkpoints/
+logs/
+
+# WandB files
+wandb/
+
+# Model files (large files)
+*.pt
+*.pth
+*.bin
+*.safetensors
+
+# Data files (large files)
+*.h5
+*.hdf5
+*.npz
+*.npy
+*.csv
+*.tsv
+*.json
+*.jsonl
+*.parquet
+*.arrow
+
+# Log files
+*.log
+*.out
+*.err
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
