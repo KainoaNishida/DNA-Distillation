@@ -113,3 +113,8 @@ test_outputs/
 test_distilled_models/
 test_multi_task_outputs/
 test_teacher_checkpoints/
+
+# Backup files
+*.backup
+*.bak
+*.old
