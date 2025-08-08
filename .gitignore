@@ -56,6 +56,7 @@ example_*.py
 test_*.py
 debug_*.py
 *.backup
+research_code/
 
 # Ruff cache
 .ruff_cache/
