@@ -1,120 +1,186 @@
-# build artifacts
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
 
-.eggs/
-.mypy_cache
-*.egg-info/
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
 
-# dev tools
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
 
-.envrc
-.python-version
-.idea
-.venv/
-.vscode/
-/*.iml
-pyrightconfig.json
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
 
+# Translations
+*.mo
+*.pot
 
-# jupyter notebooks
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
 
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
 .ipynb_checkpoints
 
+# IPython
+profile_default/
+ipython_config.py
 
-# miscellaneous
+# pyenv
+.python-version
 
-.cache/
-doc/_build/
-*.swp
-.DS_Store
+# pipenv
+#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
+#   However, in case of collaboration, if having platform-specific dependencies or dependencies
+#   having no cross-platform support, pipenv may install dependencies that don't work, or not
+#   install all needed dependencies.
+#Pipfile.lock
 
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow
+__pypackages__/
 
-# python
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
 
-*.pyc
-*.pyo
-__pycache__
+# SageMath parsed files
+*.sage.py
 
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
-# testing and continuous integration
+# Spyder project settings
+.spyderproject
+.spyproject
 
-.coverage
-.pytest_cache/
-.benchmarks
+# Rope project settings
+.ropeproject
 
-# documentation build artifacts
+# mkdocs documentation
+/site
 
-docs/build
-site/
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
-# Migration and development files
-MIGRATION_PLAN.md
-example_*.py
-test_*.py
-debug_*.py
-*.backup
-research_code/
+# Pyre type checker
+.pyre/
 
-# Ruff cache
-.ruff_cache/
-
-# Temporary files
-*.tmp
-*.temp
-temp/
-tmp/
-
-# Output directories (user-generated)
-outputs/
-results/
-checkpoints/
-logs/
-
-# WandB files
-wandb/
-
-# Model files (large files)
+# DNA Distillation specific
+# Model checkpoints and outputs
 *.pt
 *.pth
 *.bin
 *.safetensors
+checkpoints/
+outputs/
+results/
+logs/
+wandb/
 
-# Data files (large files)
-*.h5
-*.hdf5
-*.npz
-*.npy
+# Teacher models (keep structure but ignore large files)
+teacher_models/*/
+!teacher_models/.gitkeep
+
+# Student models
+student_models/
+distillation_output/
+advanced_distillation/
+
+# Data files
+data/
+datasets/
 *.csv
 *.tsv
 *.json
 *.jsonl
-*.parquet
-*.arrow
 
-# Log files
-*.log
-*.out
-*.err
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.temp
 
-# OS generated files
-Thumbs.db
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
 ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
+Thumbs.db
 
-# SLURM job scripts (generated)
-slurm_*.sh
-
-# Test outputs and temporary directories
-test_outputs/
-test_distilled_models/
-test_multi_task_outputs/
-test_teacher_checkpoints/
-
-# Backup files
-*.backup
-*.bak
-*.old
+# Example and demo files
+example_*.py
+demo_*.py
+*_example.py
+*_demo.py

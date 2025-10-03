@@ -8,6 +8,12 @@ from .losses import (
     compute_distillation_loss,
     get_distillation_loss,
     validate_distillation_inputs,
+    # Advanced distillation methods (Latest Research)
+    logit_standardization_kd_loss,
+    dkd_loss,
+    dist_loss,
+    reviewkd_loss,
+    AdvancedDistillationLoss,
 )
 
 from .utils import (
@@ -18,6 +24,13 @@ from .utils import (
     validate_distillation_setup,
     get_distillation_cache_dir,
     get_distillation_config,
+    # Advanced features from latest research
+    precompute_teacher_features,
+    create_hierarchical_checkpoint_dir,
+    hyperparameter_search,
+    get_method_hyperparameters,
+    setup_mixed_precision_training,
+    create_advanced_distillation_config,
 )
 
 from .trainers import (
@@ -42,6 +55,12 @@ __all__ = [
     "compute_distillation_loss",
     "get_distillation_loss",
     "validate_distillation_inputs",
+    # Advanced distillation methods (Latest Research)
+    "logit_standardization_kd_loss",
+    "dkd_loss",
+    "dist_loss",
+    "reviewkd_loss",
+    "AdvancedDistillationLoss",
     # Utilities
     "precompute_teacher_logits",
     "find_best_teacher_checkpoint",
@@ -50,6 +69,13 @@ __all__ = [
     "validate_distillation_setup",
     "get_distillation_cache_dir",
     "get_distillation_config",
+    # Advanced features from latest research
+    "precompute_teacher_features",
+    "create_hierarchical_checkpoint_dir",
+    "hyperparameter_search",
+    "get_method_hyperparameters",
+    "setup_mixed_precision_training",
+    "create_advanced_distillation_config",
     # Trainers
     "DistillationTrainer",
     "PrecomputedDistillationTrainer",

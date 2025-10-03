@@ -13,6 +13,51 @@ from typing import Optional, Dict, Any
 from transformers import AutoTokenizer
 
 
+class ResidualBlock(nn.Module):
+    """Residual block for CNN with optional pooling."""
+    
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, 
+                 dropout: float, pool: bool = False):
+        super(ResidualBlock, self).__init__()
+        self.conv1 = nn.Conv1d(
+            in_channels, out_channels, kernel_size, padding=kernel_size // 2
+        )
+        self.bn1 = nn.BatchNorm1d(out_channels)
+        self.conv2 = nn.Conv1d(
+            out_channels, out_channels, kernel_size, padding=kernel_size // 2
+        )
+        self.bn2 = nn.BatchNorm1d(out_channels)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(dropout)
+        
+        # Skip connection
+        if in_channels != out_channels:
+            self.downsample = nn.Conv1d(in_channels, out_channels, kernel_size=1)
+        else:
+            self.downsample = None
+            
+        # Optional pooling layer
+        self.pool = nn.MaxPool1d(kernel_size=2, stride=2) if pool else None
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        residual = x
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        out = self.dropout(out)
+        out = self.conv2(out)
+        out = self.bn2(out)
+        
+        if self.downsample:
+            residual = self.downsample(residual)
+        out += residual
+        out = self.relu(out)
+        
+        if self.pool is not None and x.size(-1) > 1:  # Only pool if sequence length > 1
+            out = self.pool(out)
+        return out
+
+
 class DNAStudentModel(nn.Module):
     """Base class for all DNA student models."""
     
@@ -257,7 +302,7 @@ class CaduceusSSM(DNAStudentModel):
 
 
 class CNNStudent(DNAStudentModel):
-    """CNN-based student model for DNA sequence classification."""
+    """CNN-based student model with residual blocks for DNA sequence classification."""
     
     def __init__(
         self,
@@ -267,45 +312,68 @@ class CNNStudent(DNAStudentModel):
         num_labels: int,
         kernel_size: int = 3,
         dropout: float = 0.1,
-        num_layers: int = 3,
+        num_res_blocks: int = 16,
+        use_one_hot: bool = False,
         padding_idx: Optional[int] = None,
     ):
         super().__init__(vocab_size, embed_dim, num_labels)
         self.num_filters = num_filters
         self.kernel_size = kernel_size
-        self.num_layers = num_layers
+        self.num_res_blocks = num_res_blocks
+        self.use_one_hot = use_one_hot
         
-        self.embedding = nn.Embedding(
-            vocab_size, embed_dim, padding_idx=padding_idx
-        )
-        
-        # CNN layers
-        self.conv_layers = nn.ModuleList()
-        in_channels = embed_dim
-        for _ in range(num_layers):
-            self.conv_layers.append(
-                nn.Conv1d(in_channels, num_filters, kernel_size, padding=kernel_size//2)
+        if not self.use_one_hot:
+            # Use standard embedding layer
+            self.embedding = nn.Embedding(
+                vocab_size, embed_dim, padding_idx=padding_idx
             )
-            in_channels = num_filters
-            
-        self.global_pool = nn.AdaptiveAvgPool1d(1)
+            in_channels = embed_dim
+        else:
+            # No embedding layer needed; we'll one-hot encode inputs
+            self.embedding = None
+            in_channels = vocab_size  # One-hot vectors have dimension equal to vocab size
+
+        # Initial convolution to go from input channels to num_filters
+        self.initial_conv = nn.Conv1d(
+            in_channels=in_channels,
+            out_channels=num_filters,
+            kernel_size=kernel_size,
+            padding=kernel_size // 2,
+        )
+
+        # Build a sequence of residual blocks (pooling every 4 blocks)
+        res_blocks = []
+        for i in range(num_res_blocks):
+            pool = (i + 1) % 4 == 0  # Pool every 4th block
+            res_blocks.append(
+                ResidualBlock(num_filters, num_filters, kernel_size, dropout, pool=pool)
+            )
+        self.res_blocks = nn.Sequential(*res_blocks)
+
+        # Global pooling and classification layers
+        self.global_pool = nn.AdaptiveMaxPool1d(1)  # Use MaxPool instead of AvgPool
+        self.fc = nn.Linear(num_filters, num_filters)
         self.dropout = nn.Dropout(dropout)
         self.classifier = nn.Linear(num_filters, num_labels)
         
     def forward(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None,
                 labels: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
-        embedded = self.embedding(input_ids)  # (batch, seq_len, embed_dim)
-        x = embedded.transpose(1, 2)  # (batch, embed_dim, seq_len)
+        if not self.use_one_hot:
+            # Use the embedding layer to convert token IDs to vectors
+            embedded = self.embedding(input_ids)  # Shape: (batch, seq_len, embed_dim)
+        else:
+            # One-hot encode the input tokens
+            embedded = F.one_hot(input_ids, num_classes=self.initial_conv.in_channels).float()
+
+        # Transpose to shape (batch, channels, seq_len) for Conv1d
+        x = embedded.transpose(1, 2)
+        x = self.initial_conv(x)
+        x = self.res_blocks(x)
+        x = self.global_pool(x).squeeze(-1)
+        x = F.relu(self.fc(x))
+        x = self.dropout(x)
         
-        # Apply CNN layers
-        for conv in self.conv_layers:
-            x = F.relu(conv(x))
-            
-        # Global pooling
-        pooled = self.global_pool(x).squeeze(-1)  # (batch, num_filters)
-        pooled = self.dropout(pooled)
-        
-        logits = self.classifier(pooled)
+        logits = self.classifier(x)
         loss = F.cross_entropy(logits, labels) if labels is not None else None
         
         return {"loss": loss, "logits": logits}
@@ -320,40 +388,25 @@ class MLPStudent(DNAStudentModel):
         embed_dim: int,
         hidden_dim: int,
         num_labels: int,
-        num_layers: int = 3,
         dropout: float = 0.1,
         padding_idx: Optional[int] = None,
     ):
         super().__init__(vocab_size, embed_dim, num_labels)
         self.hidden_dim = hidden_dim
-        self.num_layers = num_layers
         
         self.embedding = nn.Embedding(
             vocab_size, embed_dim, padding_idx=padding_idx
         )
-        
-        # MLP layers
-        layers = []
-        in_dim = embed_dim
-        for i in range(num_layers - 1):
-            layers.extend([
-                nn.Linear(in_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Dropout(dropout)
-            ])
-            in_dim = hidden_dim
-            
-        layers.append(nn.Linear(in_dim, num_labels))
-        self.mlp = nn.Sequential(*layers)
+        self.fc1 = nn.Linear(embed_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, num_labels)
+        self.dropout = nn.Dropout(dropout)
         
     def forward(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None,
                 labels: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
-        embedded = self.embedding(input_ids)  # (batch, seq_len, embed_dim)
-        
-        # Global average pooling over sequence dimension
-        pooled = torch.mean(embedded, dim=1)  # (batch, embed_dim)
-        
-        logits = self.mlp(pooled)
+        embedded = self.embedding(input_ids)
+        avg_emb = torch.mean(embedded, dim=1)  # Global average pooling
+        x = self.dropout(F.relu(self.fc1(avg_emb)))
+        logits = self.fc2(x)
         loss = F.cross_entropy(logits, labels) if labels is not None else None
         
         return {"loss": loss, "logits": logits}
@@ -384,18 +437,16 @@ class RNNStudent(DNAStudentModel):
             hidden_dim,
             num_layers=num_layers,
             batch_first=True,
+            nonlinearity="tanh",  # Explicit nonlinearity specification
             dropout=dropout if num_layers > 1 else 0,
         )
-        self.dropout = nn.Dropout(dropout)
         self.classifier = nn.Linear(hidden_dim, num_labels)
         
     def forward(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None,
                 labels: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
         embedded = self.embedding(input_ids)
-        _, hidden = self.rnn(embedded)
+        outputs, hidden = self.rnn(embedded)
         hidden_last = hidden[-1]  # Take the last layer's hidden state
-        hidden_last = self.dropout(hidden_last)
-        
         logits = self.classifier(hidden_last)
         loss = F.cross_entropy(logits, labels) if labels is not None else None
         
@@ -432,12 +483,22 @@ def create_student_model(
     
     # Handle different parameter names for different models
     if model_type == "cnn":
-        kwargs.pop("hidden_dim", None)  # CNN uses num_filters instead
+        # Extract CNN-specific parameters
+        num_filters = kwargs.pop("num_filters", hidden_dim)  # Use hidden_dim as num_filters if not specified
+        num_res_blocks = kwargs.pop("num_res_blocks", 16)
+        use_one_hot = kwargs.pop("use_one_hot", False)
+        kernel_size = kwargs.pop("kernel_size", 3)
+        # Remove parameters that CNN doesn't use
+        kwargs.pop("num_layers", None)
+        
         return ModelClass(
             vocab_size=vocab_size,
             embed_dim=embed_dim, 
-            num_filters=hidden_dim,  # Use hidden_dim as num_filters
+            num_filters=num_filters,
             num_labels=num_labels,
+            kernel_size=kernel_size,
+            num_res_blocks=num_res_blocks,
+            use_one_hot=use_one_hot,
             padding_idx=padding_idx,
             **kwargs
         )

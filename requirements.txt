@@ -1,0 +1,39 @@
+# Core dependencies for DNA Distillation
+# Install with: pip install -r requirements.txt
+
+# Core scientific computing
+numpy>=1.20.0,<2.0
+scipy>=1.10.0
+pandas>=1.5.0
+
+# DNA/Genomics specific
+biopython>=1.80
+pysam>=0.20.0
+pyfaidx>=0.8.0
+
+# Machine learning and AI
+torch>=2.0.0
+transformers>=4.30.0
+datasets>=2.10.0
+tokenizers>=0.13.0
+scikit-learn>=1.0.0
+
+# Data processing and visualization
+matplotlib>=3.5.0
+seaborn>=0.11.0
+plotly>=5.0.0
+
+# Utilities
+tqdm>=4.60.0
+rich>=12.0.0
+click>=8.0.0
+pyyaml>=6.0
+requests>=2.25.0
+
+# Experiment tracking
+wandb>=0.15.0
+peft>=0.17.0
+
+# Development dependencies (optional)
+# Install with: pip install -r requirements-dev.txt
+

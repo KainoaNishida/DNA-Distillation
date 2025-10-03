@@ -17,7 +17,18 @@ from .student_models import (
     create_student_model,
 )
 
+from .advanced_models import (
+    BPNetClassifier,
+    EnformerClassifier,
+    CaduceusClassifier,
+    DNABERT2Classifier,
+    create_advanced_model,
+    get_advanced_model_info,
+    ADVANCED_MODEL_TYPES,
+)
+
 __all__ = [
+    # Basic student models
     "BiLSTMStudent",
     "XLSTMStudent",
     "MambaSSM", 
@@ -27,4 +38,12 @@ __all__ = [
     "MLPStudent", 
     "RNNStudent",
     "create_student_model",
+    # Advanced models from latest research
+    "BPNetClassifier",
+    "EnformerClassifier",
+    "CaduceusClassifier",
+    "DNABERT2Classifier",
+    "create_advanced_model",
+    "get_advanced_model_info",
+    "ADVANCED_MODEL_TYPES",
 ]

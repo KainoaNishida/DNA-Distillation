@@ -16,7 +16,7 @@ from . import models
 from . import training  
 from . import data
 from . import distillation
-from . import utils
+# Utils module removed (was mainly SLURM functionality)
 
 # Convenient imports for common use cases
 from .models import (
@@ -24,6 +24,11 @@ from .models import (
     XLSTMStudent,
     MambaSSM,
     CNNStudent,
+    create_student_model,
+    # Advanced models from latest research
+    create_advanced_model,
+    get_advanced_model_info,
+    ADVANCED_MODEL_TYPES,
 )
 from .training import (
     DNATrainer,
@@ -36,21 +41,28 @@ from .training import (
 from .data import (
     load_nucleotide_task,
     get_num_labels,
+    get_available_tasks,
+    get_task_info,
 )
 from .distillation import (
     KnowledgeDistiller,
     distill_for_task,
     DistillationLoss,
     precompute_teacher_logits,
+    # Advanced distillation methods from latest research
+    AdvancedDistillationLoss,
+    logit_standardization_kd_loss,
+    dkd_loss,
+    dist_loss,
+    reviewkd_loss,
+    precompute_teacher_features,
+    create_hierarchical_checkpoint_dir,
+    hyperparameter_search,
+    get_method_hyperparameters,
+    setup_mixed_precision_training,
+    create_advanced_distillation_config,
 )
-from .utils import (
-    SLURMConfig,
-    create_training_job,
-    create_distillation_job,
-    create_multi_task_job,
-    get_default_slurm_configs,
-    submit_job,
-)
+# SLURM functionality removed for simplicity
 
 __version__ = VERSION
 __all__ = [
@@ -60,7 +72,6 @@ __all__ = [
     "training",
     "data", 
     "distillation",
-    "utils",
     # Convenient imports
     "BiLSTMStudent",
     "XLSTMStudent", 
@@ -73,16 +84,27 @@ __all__ = [
     "get_default_training_args",
     "train_for_task",
     "load_nucleotide_task",
-    "get_num_labels", 
+    "get_num_labels",
+    "get_available_tasks",
+    "get_task_info",
+    "create_student_model",
     "KnowledgeDistiller",
     "distill_for_task",
     "DistillationLoss",
     "precompute_teacher_logits",
-    # SLURM utilities
-    "SLURMConfig",
-    "create_training_job",
-    "create_distillation_job",
-    "create_multi_task_job",
-    "get_default_slurm_configs",
-    "submit_job",
+    # Advanced features from latest research
+    "create_advanced_model",
+    "get_advanced_model_info",
+    "ADVANCED_MODEL_TYPES",
+    "AdvancedDistillationLoss",
+    "logit_standardization_kd_loss",
+    "dkd_loss",
+    "dist_loss",
+    "reviewkd_loss",
+    "precompute_teacher_features",
+    "create_hierarchical_checkpoint_dir",
+    "hyperparameter_search",
+    "get_method_hyperparameters",
+    "setup_mixed_precision_training",
+    "create_advanced_distillation_config",
 ]

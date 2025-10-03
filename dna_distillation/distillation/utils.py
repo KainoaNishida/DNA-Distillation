@@ -14,6 +14,8 @@ from pathlib import Path
 from transformers import AutoModelForSequenceClassification, PreTrainedModel
 from torch.utils.data import DataLoader, Dataset
 from datasets import Dataset as HFDataset
+from tqdm import tqdm
+import json
 
 
 def precompute_teacher_logits(
@@ -291,7 +293,7 @@ def validate_distillation_setup(
         raise ValueError(f"Teacher and student models must have same output dimension. "
                         f"Teacher: {teacher_output_dim}, Student: {student_output_dim}")
     
-    print("✅ Distillation setup validation passed")
+    print(" Distillation setup validation passed")
 
 
 def get_distillation_cache_dir(base_dir: str, task_name: str) -> str:
@@ -343,4 +345,317 @@ def get_distillation_config(
     # Add any additional kwargs
     config.update(kwargs)
     
-    return config 
+    return config
+
+
+# ============================================================================
+# ADVANCED FEATURES FROM LATEST RESEARCH CODE
+# ============================================================================
+
+def precompute_teacher_features(
+    dataset: Union[Dataset, HFDataset],
+    teacher_model: PreTrainedModel,
+    device: torch.device,
+    batch_size: int = 16,
+    cache_file: Optional[str] = None,
+    feature_layers: Optional[List[int]] = None,
+    use_mixed_precision: bool = False
+) -> Dict[str, torch.Tensor]:
+    """
+    Precompute teacher features from multiple layers for multi-level distillation.
+    
+    This function extracts intermediate features from teacher model layers
+    for use in ReviewKD and other multi-level distillation methods.
+    
+    Args:
+        dataset: Dataset to precompute features for
+        teacher_model: Teacher model to use
+        device: Device to run computation on
+        batch_size: Batch size for computation
+        cache_file: Optional cache file to save/load features
+        feature_layers: List of layer indices to extract features from
+        use_mixed_precision: Whether to use mixed precision (FP16)
+        
+    Returns:
+        Dictionary with precomputed features from each layer
+    """
+    if cache_file is not None and os.path.exists(cache_file):
+        print(f"Loading precomputed teacher features from {cache_file}")
+        return torch.load(cache_file, map_location=device)
+    
+    teacher_model.eval()
+    features_dict = {}
+    
+    if feature_layers is None:
+        # Default to last 3 layers
+        feature_layers = [-3, -2, -1]
+    
+    # Initialize feature lists for each layer
+    for layer_idx in feature_layers:
+        features_dict[f"layer_{layer_idx}"] = []
+    
+    # Create data loader
+    dataloader = DataLoader(
+        dataset, 
+        batch_size=batch_size, 
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True if device.type == "cuda" else False
+    )
+    
+    print(f"Precomputing teacher features for {len(dataset)} samples...")
+    print(f"Extracting features from layers: {feature_layers}")
+    print(f"Using mixed precision: {use_mixed_precision}")
+    
+    with torch.no_grad():
+        for batch in tqdm(dataloader, desc="Computing teacher features"):
+            # Move batch to device
+            input_ids = batch["input_ids"].to(device, non_blocking=True)
+            attention_mask = batch["attention_mask"].to(device, non_blocking=True)
+            
+            # Get teacher features with mixed precision if enabled
+            if use_mixed_precision and device.type == "cuda":
+                with torch.cuda.amp.autocast():
+                    outputs = teacher_model(
+                        input_ids=input_ids, 
+                        attention_mask=attention_mask,
+                        output_hidden_states=True,
+                        return_dict=True
+                    )
+            else:
+                outputs = teacher_model(
+                    input_ids=input_ids, 
+                    attention_mask=attention_mask,
+                    output_hidden_states=True,
+                    return_dict=True
+                )
+            
+            # Extract features from specified layers
+            if hasattr(outputs, 'hidden_states'):
+                hidden_states = outputs.hidden_states
+                for layer_idx in feature_layers:
+                    layer_features = hidden_states[layer_idx].cpu()
+                    features_dict[f"layer_{layer_idx}"].append(layer_features)
+            else:
+                # Fallback: use logits as features
+                logits = outputs.logits.cpu()
+                for layer_idx in feature_layers:
+                    features_dict[f"layer_{layer_idx}"].append(logits)
+    
+    # Concatenate features for each layer
+    for layer_idx in feature_layers:
+        features_dict[f"layer_{layer_idx}"] = torch.cat(features_dict[f"layer_{layer_idx}"], dim=0)
+    
+    # Save to cache if specified
+    if cache_file is not None:
+        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+        torch.save(features_dict, cache_file)
+        print(f"Saved precomputed teacher features to {cache_file}")
+    
+    return features_dict
+
+
+def create_hierarchical_checkpoint_dir(
+    checkpoint_root: str,
+    task_name: str,
+    method_name: str,
+    hyperparams: Dict[str, Any]
+) -> str:
+    """
+    Create hierarchical checkpoint directory structure from latest research.
+    
+    Creates directory structure: checkpoint_root/task_name/method_name/hyperparams/
+    
+    Args:
+        checkpoint_root: Root directory for checkpoints
+        task_name: Name of the task
+        method_name: Name of the distillation method
+        hyperparams: Dictionary of hyperparameters
+        
+    Returns:
+        Path to the checkpoint directory
+    """
+    # Create hyperparameter string
+    hyperparam_parts = []
+    for key, value in sorted(hyperparams.items()):
+        if isinstance(value, float):
+            hyperparam_parts.append(f"{key}{value:.1e}")
+        else:
+            hyperparam_parts.append(f"{key}{value}")
+    hyperparam_str = "_".join(hyperparam_parts)
+    
+    # Create directory path
+    checkpoint_dir = os.path.join(checkpoint_root, task_name, method_name, hyperparam_str)
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    
+    # Save configuration file
+    config_file = os.path.join(checkpoint_dir, "config.txt")
+    with open(config_file, "w") as f:
+        f.write(f"task_name={task_name}\n")
+        f.write(f"method_name={method_name}\n")
+        f.write(f"hyperparams={hyperparam_str}\n")
+        import datetime
+        f.write(f"timestamp={datetime.datetime.now().isoformat()}\n")
+        f.write("\n# Full hyperparameters:\n")
+        for key, value in hyperparams.items():
+            f.write(f"{key}={value}\n")
+    
+    print(f"Created checkpoint directory: {checkpoint_dir}")
+    return checkpoint_dir
+
+
+def hyperparameter_search(
+    task_name: str,
+    method_name: str,
+    search_space: Dict[str, List[Any]],
+    base_config: Dict[str, Any],
+    max_trials: int = 20
+) -> List[Dict[str, Any]]:
+    """
+    Perform hyperparameter search for distillation methods.
+    
+    Args:
+        task_name: Name of the task
+        method_name: Name of the distillation method
+        search_space: Dictionary defining search space for each hyperparameter
+        base_config: Base configuration to extend
+        max_trials: Maximum number of trials to run
+        
+    Returns:
+        List of hyperparameter configurations to try
+    """
+    import itertools
+    import random
+    
+    # Generate all combinations
+    param_names = list(search_space.keys())
+    param_values = list(search_space.values())
+    
+    all_combinations = list(itertools.product(*param_values))
+    
+    # Randomly sample if too many combinations
+    if len(all_combinations) > max_trials:
+        all_combinations = random.sample(all_combinations, max_trials)
+    
+    # Create configurations
+    configurations = []
+    for combination in all_combinations:
+        config = base_config.copy()
+        for param_name, param_value in zip(param_names, combination):
+            config[param_name] = param_value
+        config["task_name"] = task_name
+        config["method_name"] = method_name
+        configurations.append(config)
+    
+    print(f"Generated {len(configurations)} hyperparameter configurations for {method_name}")
+    return configurations
+
+
+def get_method_hyperparameters(method_name: str) -> Dict[str, Any]:
+    """
+    Get default hyperparameters for distillation methods from latest research.
+    
+    Args:
+        method_name: Name of the distillation method
+        
+    Returns:
+        Dictionary of default hyperparameters
+    """
+    method_configs = {
+        'vanilla': {
+            'temperature': 4.0,
+            'lambda_kl': 0.3,
+            'lambda_mse': 0.2,
+        },
+        'logit_standard': {
+            'temperature': 4.0,
+            'lambda_kl': 0.3,
+            'lambda_mse': 0.2,
+        },
+        'dkd': {
+            'temperature': 4.0,
+            'lambda_kl': 0.3,
+            'lambda_mse': 0.0,  # DKD typically doesn't use MSE
+            'alpha': 1.0,
+            'beta': 8.0,
+        },
+        'dist': {
+            'lambda_kl': 0.3,  # DIST replaces KL with correlation loss
+            'lambda_mse': 0.0,  # DIST doesn't use MSE
+            'beta': 2.0,
+            'gamma': 2.0,
+        },
+        'reviewkd': {
+            'temperature': 4.0,
+            'lambda_kl': 0.3,
+            'lambda_mse': 0.0,  # ReviewKD uses its own feature fusion
+        }
+    }
+    
+    return method_configs.get(method_name, {})
+
+
+def setup_mixed_precision_training(
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scaler: Optional[torch.cuda.amp.GradScaler] = None
+) -> torch.cuda.amp.GradScaler:
+    """
+    Setup mixed precision training for faster training.
+    
+    Args:
+        model: Model to train
+        optimizer: Optimizer to use
+        scaler: Optional existing scaler
+        
+    Returns:
+        GradScaler for mixed precision training
+    """
+    if scaler is None:
+        scaler = torch.cuda.amp.GradScaler()
+    
+    print("Mixed precision training enabled (FP16)")
+    return scaler
+
+
+def create_advanced_distillation_config(
+    method: str,
+    task_name: str,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Create advanced distillation configuration from latest research.
+    
+    Args:
+        method: Distillation method name
+        task_name: Name of the task
+        **kwargs: Additional configuration parameters
+        
+    Returns:
+        Complete distillation configuration
+    """
+    # Get method-specific hyperparameters
+    method_hparams = get_method_hyperparameters(method)
+    
+    # Base configuration
+    config = {
+        "method": method,
+        "task_name": task_name,
+        "temperature": 4.0,
+        "lambda_kl": 0.3,
+        "lambda_mse": 0.2,
+        "use_mixed_precision": True,
+        "precompute_logits": True,
+        "precompute_features": method in ["reviewkd"],
+        "feature_layers": [-3, -2, -1] if method in ["reviewkd"] else None,
+        "hierarchical_checkpoints": True,
+        "hyperparameter_search": False,
+    }
+    
+    # Add method-specific parameters
+    config.update(method_hparams)
+    
+    # Add any additional kwargs
+    config.update(kwargs)
+    
+    return config

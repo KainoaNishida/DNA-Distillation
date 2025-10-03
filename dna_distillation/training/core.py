@@ -264,4 +264,150 @@ def train_multiple_tasks(
             print(f"Error training on {task_name}: {e}")
             results[task_name] = {"error": str(e)}
     
+    return results
+
+
+def train_teacher_model(
+    task_name: str,
+    teacher_model_type: str = "nucleotide_transformer_500m",
+    datasets: Optional[Dict[str, Any]] = None,
+    training_config: Optional[Dict[str, Any]] = None,
+    tokenizer_name: Optional[str] = None,
+    output_dir: str = "./teacher_models"
+) -> Dict[str, Any]:
+    """
+    Train a teacher model on a DNA sequence task.
+    
+    Args:
+        task_name: Name of the DNA sequence task
+        teacher_model_type: Type of teacher model to train (nucleotide_transformer_500m, nucleotide_transformer_2b5, custom)
+        datasets: Pre-loaded datasets (optional)
+        training_config: Training configuration (optional)
+        tokenizer_name: Name of the tokenizer to use (auto-detected if None)
+        output_dir: Directory to save the trained model
+        
+    Returns:
+        Training results dictionary
+    """
+    from transformers import (
+        AutoTokenizer, 
+        AutoModelForSequenceClassification,
+        TrainingArguments,
+        Trainer,
+        EarlyStoppingCallback
+    )
+    from datasets import load_dataset
+    import torch
+    import os
+    
+    # Define model configurations
+    model_configs = {
+        "nucleotide_transformer_500m": {
+            "model_name": "InstaDeepAI/nucleotide-transformer-500m-human-ref",
+            "description": "500M parameter Nucleotide Transformer (Human Reference)",
+            "memory_requirement": "~8GB GPU memory"
+        },
+        "nucleotide_transformer_2b5": {
+            "model_name": "InstaDeepAI/nucleotide-transformer-2.5b-multi-species", 
+            "description": "2.5B parameter Nucleotide Transformer (Multi-species)",
+            "memory_requirement": "~24GB GPU memory"
+        }
+    }
+    
+    # Auto-detect tokenizer name if not provided
+    if tokenizer_name is None:
+        if teacher_model_type in model_configs:
+            tokenizer_name = model_configs[teacher_model_type]["model_name"]
+        else:
+            raise ValueError(f"Unknown teacher model type: {teacher_model_type}. Available: {list(model_configs.keys())}")
+    
+    # Load datasets if not provided
+    if datasets is None:
+        datasets = load_nucleotide_task(
+            task_name=task_name,
+            tokenizer_name=tokenizer_name,
+            max_length=training_config.get("max_length", 512) if training_config else 512
+        )
+    
+    # Load tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+    
+    # Get number of labels
+    num_labels = get_num_labels(task_name)
+    
+    # Load teacher model
+    if teacher_model_type in model_configs:
+        model_name = model_configs[teacher_model_type]["model_name"]
+        print(f"Loading {model_configs[teacher_model_type]['description']}")
+        print(f"Memory requirement: {model_configs[teacher_model_type]['memory_requirement']}")
+        
+        model = AutoModelForSequenceClassification.from_pretrained(
+            model_name,
+            num_labels=num_labels,
+            trust_remote_code=True
+        )
+    else:
+        raise ValueError(f"Unsupported teacher model type: {teacher_model_type}. Available: {list(model_configs.keys())}")
+    
+    # Default training configuration
+    if training_config is None:
+        training_config = {
+            "num_train_epochs": 10,
+            "per_device_train_batch_size": 16,
+            "per_device_eval_batch_size": 32,
+            "learning_rate": 1e-5,
+            "weight_decay": 0.01,
+            "warmup_steps": 1000,
+            "fp16": True,
+            "save_strategy": "epoch",
+            "evaluation_strategy": "epoch",
+            "load_best_model_at_end": True,
+            "metric_for_best_model": "f1_score",
+            "output_dir": output_dir,
+            "logging_steps": 50,
+        }
+    
+    # Create training arguments
+    training_args = TrainingArguments(**training_config)
+    
+    # Create trainer
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=datasets["train"],
+        eval_dataset=datasets["validation"],
+        tokenizer=tokenizer,
+        compute_metrics=compute_metrics,
+    )
+    
+    # Add early stopping if specified
+    if training_config.get("early_stopping_patience", 0) > 0:
+        early_stopping = EarlyStoppingCallback(
+            early_stopping_patience=training_config["early_stopping_patience"]
+        )
+        trainer.add_callback(early_stopping)
+    
+    # Train the model
+    print(f"Training teacher model on {task_name}...")
+    train_results = trainer.train()
+    
+    # Evaluate on test set if available
+    test_results = {}
+    if "test" in datasets:
+        test_results = trainer.evaluate(datasets["test"], metric_key_prefix="test")
+    
+    # Save the final model
+    trainer.save_model()
+    tokenizer.save_pretrained(output_dir)
+    
+    # Compile results
+    results = {
+        "task_name": task_name,
+        "teacher_model_type": teacher_model_type,
+        "train_results": train_results,
+        "test_results": test_results,
+        "model_path": output_dir,
+        "num_labels": num_labels,
+    }
+    
     return results 

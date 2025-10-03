@@ -21,6 +21,7 @@ from .trainers import (
 from .core import (
     train_for_task,
     train_multiple_tasks,
+    train_teacher_model,
 )
 
 __all__ = [
@@ -41,4 +42,5 @@ __all__ = [
     # Core functions
     "train_for_task",
     "train_multiple_tasks",
+    "train_teacher_model",
 ]
