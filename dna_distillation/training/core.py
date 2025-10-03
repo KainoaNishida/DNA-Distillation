@@ -367,6 +367,12 @@ def train_teacher_model(
             tokenizer.padding_side = "right"
         except Exception:
             pass
+    elif teacher_model_type == "caduceus":
+        # Caduceus requires trust_remote_code=True for custom tokenizer
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_configs["caduceus"]["model_name"],
+            trust_remote_code=True
+        )
     else:
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
     
@@ -416,9 +422,9 @@ def train_teacher_model(
         else:
             datasets = load_nucleotide_task(
                 task_name=task_name,
-                tokenizer=tokenizer,
-                max_length=max_length,
-            )
+                            tokenizer=tokenizer,
+                            max_length=max_length,
+        )
     
     # Get number of labels
     num_labels = get_num_labels(task_name)
@@ -663,6 +669,275 @@ def train_teacher_model(
                 "final_test_mcc": final_metrics["mcc"],
                 "model_path": output_dir,
             }
+        elif teacher_model_type == "caduceus":
+            # Caduceus teacher: mirror finetune-caduceus-8-7-save-val-mcc-early-stopping-set1.py
+            from transformers import AdamW, get_cosine_schedule_with_warmup, DataCollatorWithPadding
+            from sklearn.model_selection import train_test_split
+            from sklearn.metrics import f1_score, matthews_corrcoef
+            from torch.utils.data import Dataset, DataLoader
+            import pandas as pd
+            import time
+            
+            # Evaluation function (from research script)
+            def evaluate(model, loader, device):
+                model.eval()
+                all_preds = []
+                all_labels = []
+                total_time = 0.0
+                with torch.no_grad():
+                    for batch in loader:
+                        input_ids = batch["input_ids"].to(device)
+                        attention_mask = batch["attention_mask"].to(device)
+                        labels = batch["labels"].to(device)
+
+                        start_time = time.time()
+                        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+                        total_time += time.time() - start_time
+                        
+                        logits = outputs.logits
+                        preds = logits.argmax(dim=-1).cpu().numpy()
+                        all_preds.append(preds)
+                        all_labels.append(labels.cpu().numpy())
+
+                all_preds = np.concatenate(all_preds)
+                all_labels = np.concatenate(all_labels)
+                
+                return {
+                    "f1": f1_score(all_labels, all_preds, average="macro"),
+                    "mcc": matthews_corrcoef(all_labels, all_preds),
+                    "latency": total_time / len(loader.dataset)
+                }
+            
+            # Target MCC scores for early stopping (from research script)
+            TARGET_MCCS = {
+                "H3K9ac": 0.58722, "H3K27ac": 0.52796, "enhancers": 0.56375, "enhancers_types": 0.54228,
+                "promoter_all": 0.81154, "promoter_tata": 0.86496, "promoter_no_tata": 0.82328,
+                "H3K4me1": 0.53370, "H3K4me2": 0.60484, "H3K4me3": 0.68665, "H2AFZ": 0.55129,
+                "H3K27me3": 0.64596, "H3K36me3": 0.66649, "H3K9me3": 0.50532, "H4K20me1": 0.69339,
+                "splice_sites_donors": 0.79797, "splice_sites_all": 0.81413, "splice_sites_acceptors": 0.79094,
+            }
+            
+            # Caduceus-specific training config defaults
+            if training_config is None:
+                training_config = {
+                    "num_train_epochs": 100,
+                    "per_device_train_batch_size": 8,
+                    "per_device_eval_batch_size": 8,
+                    "learning_rate": 3e-5,
+                    "weight_decay": 0.0,
+                    "max_length": 1024,
+                    "use_early_stopping": True,
+                    "early_stop_patience": 30,
+                    "wandb_project": "Caduceus-nt-revised-finetune",
+                    "log_batch_every": 50,
+                    "output_dir": output_dir,
+                }
+            
+            target_mcc = TARGET_MCCS.get(task_name) if training_config.get("use_early_stopping", False) else None
+            if target_mcc:
+                print(f"Early stopping enabled for '{task_name}' with target MCC: {target_mcc:.4f}")
+            
+            # Load datasets exactly like research script
+            full_ds_trainval = load_dataset(
+                "InstaDeepAI/nucleotide_transformer_downstream_tasks_revised",
+                split="train", trust_remote_code=True
+            )
+            full_ds_test = load_dataset(
+                "InstaDeepAI/nucleotide_transformer_downstream_tasks_revised",
+                split="test", trust_remote_code=True
+            )
+            
+            # Filter by task
+            ds_trainval = full_ds_trainval.filter(lambda example: example["task"] == task_name)
+            ds_test = full_ds_test.filter(lambda example: example["task"] == task_name)
+            
+            # Extract sequences and labels
+            sequences = ds_trainval["sequence"]
+            labels = ds_trainval["label"]
+            
+            # Split train -> train / validation (90% / 10%)
+            X_train, X_val, y_train, y_val = train_test_split(
+                sequences, labels, test_size=0.1, random_state=42, stratify=labels
+            )
+            
+            # NTSeqDataset class (from research script)
+            class NTSeqDataset(Dataset):
+                def __init__(self, sequences, labels, tokenizer, max_len):
+                    self.sequences = sequences
+                    self.labels = labels
+                    self.tokenizer = tokenizer
+                    self.max_len = max_len
+
+                def __len__(self):
+                    return len(self.sequences)
+
+                def __getitem__(self, idx):
+                    seq = self.sequences[idx]
+                    label = self.labels[idx]
+                    enc = self.tokenizer(
+                        seq, padding="max_length", truncation=True, max_length=self.max_len, return_tensors="pt"
+                    )
+                    input_ids = enc["input_ids"].squeeze(0)
+                    attention_mask = enc["attention_mask"].squeeze(0) if "attention_mask" in enc else (input_ids != self.tokenizer.pad_token_id).long()
+                    return {
+                        "input_ids": input_ids,
+                        "attention_mask": attention_mask,
+                        "labels": torch.tensor(label, dtype=torch.long),
+                    }
+            
+            # Create datasets
+            max_length = training_config.get("max_length", 1024)
+            train_ds = NTSeqDataset(X_train, y_train, tokenizer, max_length)
+            val_ds = NTSeqDataset(X_val, y_val, tokenizer, max_length)
+            test_ds = NTSeqDataset(ds_test["sequence"], ds_test["label"], tokenizer, max_length)
+            
+            # Data collator
+            data_collator = DataCollatorWithPadding(tokenizer, padding=True)
+            
+            # DataLoaders
+            train_loader = DataLoader(
+                train_ds, batch_size=training_config["per_device_train_batch_size"], 
+                shuffle=True, num_workers=0, collate_fn=data_collator
+            )
+            val_loader = DataLoader(
+                val_ds, batch_size=training_config["per_device_eval_batch_size"], 
+                shuffle=False, num_workers=0, collate_fn=data_collator
+            )
+            test_loader = DataLoader(
+                test_ds, batch_size=training_config["per_device_eval_batch_size"], 
+                shuffle=False, num_workers=0, collate_fn=data_collator
+            )
+            
+            # Load Caduceus model
+            model = AutoModelForSequenceClassification.from_pretrained(
+                config["model_name"], num_labels=num_labels, trust_remote_code=True
+            ).to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+            
+            # Optimizer & Scheduler
+            optimizer = AdamW(model.parameters(), lr=training_config["learning_rate"], weight_decay=training_config["weight_decay"])
+            total_steps = training_config["num_train_epochs"] * len(train_loader)
+            scheduler = get_cosine_schedule_with_warmup(
+                optimizer, num_warmup_steps=int(0.1 * total_steps), num_training_steps=total_steps
+            )
+            
+            # WandB setup
+            run_name = f"{task_name}_caduceus_finetune"
+            wandb.init(
+                project=training_config.get("wandb_project", "Caduceus-nt-revised-finetune"),
+                name=run_name,
+                config={"task": task_name, **training_config},
+                reinit=True
+            )
+            wandb.watch(model, log="all", log_freq=training_config.get("log_batch_every", 50))
+            
+            # Checkpoint directory
+            checkpoint_dir = os.path.join(output_dir, "checkpoints")
+            os.makedirs(checkpoint_dir, exist_ok=True)
+            print(f"Checkpoints will be saved in: {checkpoint_dir}")
+            
+            # Training loop
+            start_time = time.time()
+            global_step = 0
+            best_val_mcc = -1.0
+            best_test_metrics = {}
+            target_mcc_reached = False
+            epochs_after_reach = 0
+            
+            for epoch in range(1, training_config["num_train_epochs"] + 1):
+                model.train()
+                epoch_loss = 0.0
+                
+                for step, batch in enumerate(train_loader, start=1):
+                    input_ids = batch["input_ids"].to(model.device)
+                    attention_mask = batch["attention_mask"].to(model.device)
+                    labels_batch = batch["labels"].to(model.device)
+
+                    optimizer.zero_grad()
+                    outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels_batch)
+                    loss = outputs.loss
+                    loss.backward()
+                    optimizer.step()
+                    scheduler.step()
+
+                    epoch_loss += loss.item() * input_ids.size(0)
+                    global_step += 1
+
+                    if global_step % training_config.get("log_batch_every", 50) == 0:
+                        wandb.log({"train/batch_loss": loss.item(), "step": global_step})
+
+                # End of epoch evaluation
+                avg_loss = epoch_loss / len(train_ds)
+                val_metrics = evaluate(model, val_loader, model.device)
+                elapsed = time.time() - start_time
+                
+                print(f"Epoch {epoch}/{training_config['num_train_epochs']} | loss {avg_loss:.4f} | val_f1 {val_metrics['f1']:.4f} | val_mcc {val_metrics['mcc']:.4f}")
+                wandb.log({
+                    "epoch": epoch, "train/epoch_loss": avg_loss, "val/f1": val_metrics["f1"], 
+                    "val/mcc": val_metrics["mcc"], "time/elapsed_s": elapsed
+                }, step=global_step)
+
+                # Save best model checkpoint
+                if val_metrics["mcc"] > best_val_mcc:
+                    best_val_mcc = val_metrics["mcc"]
+                    best_test_metrics = evaluate(model, test_loader, model.device)
+                    print(f"🚀 New best val_mcc: {best_val_mcc:.4f}. Corresponding test mcc: {best_test_metrics['mcc']:.4f}")
+
+                    # Save checkpoint
+                    checkpoint_filename = f"epoch{epoch}_valmcc_{best_val_mcc:.4f}.pt"
+                    checkpoint_path = os.path.join(checkpoint_dir, checkpoint_filename)
+                    torch.save(model.state_dict(), checkpoint_path)
+                    
+                    # Save tokenizer and config
+                    model.config.save_pretrained(output_dir)
+                    tokenizer.save_pretrained(output_dir)
+                    
+                    print(f"Saved new best checkpoint to: {checkpoint_path}")
+                    wandb.log({"best_val_mcc": best_val_mcc, "best_test_mcc": best_test_metrics['mcc']})
+                
+                # Early stopping logic
+                if target_mcc is not None:
+                    if target_mcc_reached:
+                        epochs_after_reach += 1
+                        print(f"Patience epoch {epochs_after_reach}/{training_config.get('early_stop_patience', 30)}...")
+                    elif val_metrics["mcc"] >= target_mcc:
+                        print(f"🎯 Target MCC of {target_mcc:.4f} reached! Training for {training_config.get('early_stop_patience', 30)} more epochs.")
+                        target_mcc_reached = True
+                        epochs_after_reach += 1
+                    
+                    if epochs_after_reach >= training_config.get("early_stop_patience", 30) and target_mcc_reached:
+                        print(f"Finished training {training_config.get('early_stop_patience', 30)} epochs after reaching target. Stopping early.")
+                        break
+
+            # Final summary
+            print(f"\n--- Training Complete ---")
+            print(f"Best validation MCC achieved: {best_val_mcc:.4f}")
+            print(f"Corresponding Test F1: {best_test_metrics.get('f1', 0):.4f}, Test MCC: {best_test_metrics.get('mcc', 0):.4f}")
+            
+            wandb.log({
+                "final/best_val_mcc": best_val_mcc,
+                "final/test_f1": best_test_metrics.get('f1', 0),
+                "final/test_mcc": best_test_metrics.get('mcc', 0),
+                "final/test_latency": best_test_metrics.get('latency', 0)
+            })
+            wandb.finish()
+
+            # Save summary to CSV
+            summary_file = os.path.join(output_dir, 'caduceus_summary.csv')
+            summary_df = pd.DataFrame([{
+                'task_name': task_name, 
+                'test_mcc': best_test_metrics.get('mcc', 0), 
+                'test_latency_time': best_test_metrics.get('latency', 0)
+            }])
+            summary_df.to_csv(summary_file, mode='a', header=not os.path.exists(summary_file), index=False)
+
+            return {
+                "task_name": task_name,
+                "teacher_model_type": teacher_model_type,
+                "train_results": {"metrics": {"train_loss": avg_loss}},
+                "test_results": best_test_metrics,
+                "model_path": output_dir,
+                "num_labels": num_labels,
+            }
         else:
             # Standard HuggingFace models
             load_kwargs = {
@@ -679,10 +954,10 @@ def train_teacher_model(
                 model = AutoModelForSequenceClassification.from_pretrained(
                     model_name,
                     num_labels=num_labels,
-                    trust_remote_code=True,
-                    revision=config.get("revision"),
-                    force_download=True,
-                )
+                                            trust_remote_code=True,
+                                            revision=config.get("revision"),
+                                            force_download=True,
+                                        )
                 # Resize to len(tokenizer vocab) to prevent index errors from fast tokenizer ids
                 try:
                     vocab_len = len(getattr(tokenizer, "get_vocab")() if hasattr(tokenizer, "get_vocab") else tokenizer)
@@ -693,7 +968,7 @@ def train_teacher_model(
                 model = AutoModelForSequenceClassification.from_pretrained(
                     model_name,
                     **load_kwargs
-                )
+        )
     else:
         raise ValueError(f"Unsupported teacher model type: {teacher_model_type}. Available: {list(model_configs.keys())}")
     

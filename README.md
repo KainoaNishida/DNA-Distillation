@@ -16,7 +16,25 @@ A powerful Python package for DNA sequence analysis and knowledge distillation, 
 - **Model Dependencies**: Some teacher models require additional packages:
   - **DNA-BERT2**: Requires `einops` (included in requirements)
   - **Enformer**: Requires `enformer-pytorch` (included in requirements)
-  - **Caduceus**: Requires `mamba-ssm` (not included due to compilation issues on macOS)
+  - **Caduceus**: Requires `mamba-ssm` (not available on macOS due to compilation issues - Linux only)
+
+### Caduceus Model Limitation
+
+The Caduceus teacher model training is **not available on macOS** due to the `mamba_ssm` dependency which cannot be compiled on macOS. This is a known limitation of the Caduceus model itself, not our implementation.
+
+**Workarounds:**
+
+1. **Use Linux with CUDA**: The Caduceus training works perfectly on Linux systems with CUDA support
+2. **Use other teacher models**: DNA-BERT2, Enformer, and Nucleotide Transformer work on all platforms
+3. **Use pre-trained Caduceus models**: You can still use pre-trained Caduceus models for distillation on macOS
+
+**For Linux users**, the Caduceus training includes:
+
+- Early stopping with target MCC thresholds for all 17 downstream tasks
+- AdamW optimizer with cosine annealing scheduler
+- WandB logging and checkpointing
+- Best model saving based on validation MCC
+- CSV summary generation
 
 ## Quick Start
 
@@ -52,73 +70,419 @@ dna.run_distillation(
 )
 ```
 
-## CLI Commands
+## 🚀 Complete Training Pipeline
 
-### Quick Test (Recommended for First Use)
+### Step 1: Train Teacher Models
+
+#### DNA-BERT2 Teacher (Recommended for macOS)
 
 ```bash
-# Run a simple distillation test with synthetic data
-python -m dna_distillation.cli simple-distill --method dkd --student-model-type bilstm --num-epochs 3
+# Setup environment (one-time)
+uv venv .uv/dnabert2 -p 3.10
+uv pip install -r envs/dnabert2-req.txt -p .uv/dnabert2
+uv pip install -p .uv/dnabert2 matplotlib seaborn plotly rich tyro==0.5.7
 
-# Test different student models
-python -m dna_distillation.cli simple-distill --method dkd --student-model-type cnn --num-epochs 3
-python -m dna_distillation.cli simple-distill --method dist --student-model-type mamba --num-epochs 3
-python -m dna_distillation.cli simple-distill --method dkd --student-model-type bpnet --num-epochs 3
+# Train DNA-BERT2 teacher
+./.uv/dnabert2/bin/python -m dna_distillation.cli train-teacher \
+  --teacher-model-type dna_bert2 \
+  --task H3K4me1 \
+  --output-dir teacher_models/dnabert2_model \
+  --no-use-mixed-precision \
+  --batch-size 4 \
+  --num-train-epochs 10
 ```
 
-### Create Student Models
+#### Enformer Teacher
+
+```bash
+# Setup environment (one-time)
+uv venv .uv/enformer -p 3.10
+uv pip install -r envs/enformer-req.txt -p .uv/enformer
+uv pip install -p .uv/enformer matplotlib seaborn plotly rich tyro==0.5.7
+
+# Train Enformer teacher
+./.uv/enformer/bin/python -m dna_distillation.cli train-teacher \
+  --teacher-model-type enformer \
+  --task H3K4me1 \
+  --output-dir teacher_models/enformer_model \
+  --num-train-epochs 10
+```
+
+#### Nucleotide Transformer 500M Teacher
+
+```bash
+# Setup environment (one-time)
+uv venv .uv/nt500m -p 3.10
+uv pip install -r envs/nt500m-req.txt -p .uv/nt500m
+uv pip install -p .uv/nt500m matplotlib seaborn plotly rich tyro==0.5.7
+
+# Train NT500M teacher
+./.uv/nt500m/bin/python -m dna_distillation.cli train-teacher \
+  --teacher-model-type nucleotide_transformer_500m \
+  --task H3K4me1 \
+  --output-dir teacher_models/nt500m_model \
+  --no-use-mixed-precision \
+  --num-train-epochs 10
+```
+
+#### Caduceus Teacher (Linux only)
+
+```bash
+# Setup environment (one-time) - Linux only
+uv venv .uv/caduceus -p 3.10
+uv pip install -r envs/caduceus-req.txt -p .uv/caduceus
+uv pip install -p .uv/caduceus matplotlib seaborn plotly rich tyro==0.5.7
+
+# Train Caduceus teacher (Linux only)
+./.uv/caduceus/bin/python -m dna_distillation.cli train-teacher \
+  --teacher-model-type caduceus \
+  --task H3K4me1 \
+  --output-dir teacher_models/caduceus_model \
+  --num-train-epochs 10
+```
+
+### Step 2: Train Student Models with Knowledge Distillation
+
+#### Simple Distillation (Quick Test)
+
+```bash
+# Test with synthetic data
+python -m dna_distillation.cli simple-distill \
+  --method dkd \
+  --student-model-type bilstm \
+  --num-epochs 3
+
+# Test different student models
+python -m dna_distillation.cli simple-distill \
+  --method dist \
+  --student-model-type cnn \
+  --num-epochs 3
+
+python -m dna_distillation.cli simple-distill \
+  --method dkd \
+  --student-model-type bpnet \
+  --num-epochs 3
+```
+
+#### Advanced Distillation with Real Data
+
+```bash
+# Distill DNA-BERT2 teacher to BiLSTM student
+python -m dna_distillation.cli advanced-distill \
+  --task-name H3K4me1 \
+  --method dkd \
+  --student-model-type bilstm \
+  --teacher-model-path teacher_models/dnabert2_model \
+  --output-dir distillation_results/dnabert2_to_bilstm \
+  --num-epochs 10 \
+  --use-wandb
+
+# Distill Enformer teacher to CNN student
+python -m dna_distillation.cli advanced-distill \
+  --task-name H3K4me1 \
+  --method dist \
+  --student-model-type cnn \
+  --teacher-model-path teacher_models/enformer_model \
+  --output-dir distillation_results/enformer_to_cnn \
+  --num-epochs 15 \
+  --use-wandb
+
+# Distill NT500M teacher to BPNet student
+python -m dna_distillation.cli advanced-distill \
+  --task-name H3K4me1 \
+  --method reviewkd \
+  --student-model-type bpnet \
+  --teacher-model-path teacher_models/nt500m_model \
+  --output-dir distillation_results/nt500m_to_bpnet \
+  --num-epochs 20 \
+  --use-wandb
+```
+
+## 📋 Complete CLI Reference
+
+### Teacher Model Training Commands
+
+#### List Available Teacher Models
+
+```bash
+python -m dna_distillation.cli list-teacher-models
+```
+
+Output:
+
+```
+Available Teacher Model Types (5)
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┓
+┃ Model Type                  ┃ Description                                             ┃ Memory Requirement ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━┩
+│ nucleotide_transformer_500m │ 500M parameter Nucleotide Transformer (Human Reference) │ ~8GB GPU memory    │
+│ nucleotide_transformer_2b5  │ 2.5B parameter Nucleotide Transformer (Multi-species)   │ ~24GB GPU memory   │
+│ dna_bert2                   │ DNA-BERT2 117M parameter model                          │ ~4GB GPU memory    │
+│ enformer                    │ Enformer model for regulatory element prediction        │ ~12GB GPU memory   │
+│ caduceus                    │ Caduceus bidirectional state space model                │ ~6GB GPU memory    │
+└─────────────────────────────┴─────────────────────────────────────────────────────────┴────────────────────┘
+```
+
+#### Train Teacher Models
+
+```bash
+# DNA-BERT2 (macOS compatible)
+python -m dna_distillation.cli train-teacher \
+  --teacher-model-type dna_bert2 \
+  --task H3K4me1 \
+  --output-dir teacher_models/dnabert2_model \
+  --no-use-mixed-precision \
+  --batch-size 4 \
+  --num-train-epochs 10
+
+# Enformer (macOS compatible)
+python -m dna_distillation.cli train-teacher \
+  --teacher-model-type enformer \
+  --task H3K4me1 \
+  --output-dir teacher_models/enformer_model \
+  --num-train-epochs 10
+
+# Nucleotide Transformer 500M (macOS compatible)
+python -m dna_distillation.cli train-teacher \
+  --teacher-model-type nucleotide_transformer_500m \
+  --task H3K4me1 \
+  --output-dir teacher_models/nt500m_model \
+  --no-use-mixed-precision \
+  --num-train-epochs 10
+
+# Caduceus (Linux only)
+python -m dna_distillation.cli train-teacher \
+  --teacher-model-type caduceus \
+  --task H3K4me1 \
+  --output-dir teacher_models/caduceus_model \
+  --num-train-epochs 10
+```
+
+### Student Model Training Commands
+
+#### List Available Student Models
+
+```bash
+python -m dna_distillation.cli list-models
+```
+
+Output:
+
+```
+Available Student Model Types (9)
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Model Type                  ┃ Description                                             ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ bilstm                      │ Bidirectional LSTM with attention                      │
+│ xlstm                       │ Extended LSTM with improved memory                     │
+│ mamba                       │ State space model for long sequences                   │
+│ hyena                       │ Long-range dependency modeling                         │
+│ caduceus                    │ Bidirectional state space model                        │
+│ cnn                         │ Convolutional network with residual blocks              │
+│ mlp                         │ Multi-layer perceptron                                 │
+│ rnn                         │ Recurrent neural network                               │
+│ bpnet                       │ BPNet with dilated convolutions and attention          │
+└─────────────────────────────┴─────────────────────────────────────────────────────────┘
+```
+
+#### List Available Tasks
+
+```bash
+python -m dna_distillation.cli list-tasks
+```
+
+Output:
+
+```
+Available Tasks (17)
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Task Name                  ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ H3K9ac                     │
+│ H3K27ac                    │
+│ enhancers                  │
+│ enhancers_types            │
+│ promoter_all               │
+│ promoter_tata              │
+│ promoter_no_tata           │
+│ H3K4me1                    │
+│ H3K4me2                    │
+│ H3K4me3                    │
+│ H2AFZ                      │
+│ H3K27me3                   │
+│ H3K36me3                   │
+│ H3K9me3                    │
+│ H4K20me1                   │
+│ splice_sites_donors        │
+│ splice_sites_all           │
+│ splice_sites_acceptors     │
+└─────────────────────────────┘
+```
+
+#### Create Student Models
 
 ```bash
 # Create a BiLSTM model
-python -m dna_distillation.cli create-model --model-type bilstm --output-path student_models/bilstm_model.pt
+python -m dna_distillation.cli create-model \
+  --model-type bilstm \
+  --output-path student_models/bilstm_model.pt
 
 # Create a CNN with residual blocks
-python -m dna_distillation.cli create-model --model-type cnn --num-res-blocks 16 --use-one-hot --output-path student_models/cnn_model.pt
+python -m dna_distillation.cli create-model \
+  --model-type cnn \
+  --num-res-blocks 16 \
+  --use-one-hot \
+  --output-path student_models/cnn_model.pt
+
+# Create a BPNet model
+python -m dna_distillation.cli create-model \
+  --model-type bpnet \
+  --output-path student_models/bpnet_model.pt
 ```
 
-### Train Teacher Models
+#### Run Knowledge Distillation
 
 ```bash
-# Train 500M teacher model
-python -m dna_distillation.cli train-teacher --teacher-model-type nucleotide_transformer_500m --task H3K4me1 --output-dir teacher_models/500m_model
+# Simple distillation with synthetic data
+python -m dna_distillation.cli simple-distill \
+  --method dkd \
+  --student-model-type bilstm \
+  --num-epochs 10
 
-# Train 2.5B teacher model
-python -m dna_distillation.cli train-teacher --teacher-model-type nucleotide_transformer_2b5 --task H3K4me1 --output-dir teacher_models/2b5_model
-
-# Train DNA-BERT2 teacher model
-python -m dna_distillation.cli train-teacher --teacher-model-type dna_bert2 --task H3K4me1 --output-dir teacher_models/dnabert2_model
-
-# Train Enformer teacher model
-python -m dna_distillation.cli train-teacher --teacher-model-type enformer --task H3K4me1 --output-dir teacher_models/enformer_model
-
-# Train Caduceus teacher model
-python -m dna_distillation.cli train-teacher --teacher-model-type caduceus --task H3K4me1 --output-dir teacher_models/caduceus_model
-
-# Or run with uv-based per-model scripts (isolated envs)
-bash scripts/train_nt500m_uv.sh H3K4me1 teacher_models/nt500m_model
-bash scripts/train_dnabert2_uv.sh H3K4me1 teacher_models/dnabert2_model
-bash scripts/train_enformer_uv.sh H3K4me1 teacher_models/enformer_model
-bash scripts/train_caduceus_uv.sh H3K4me1 teacher_models/caduceus_model
-```
-
-### Run Advanced Distillation
-
-```bash
 # Advanced distillation with real data
-python -m dna_distillation.cli advanced-distill --task-name H3K4me1 --method dkd --student-model-type bilstm --teacher-model-path teacher_models/my_teacher_model --output-dir ./distillation_results --num-epochs 10 --use-wandb
+python -m dna_distillation.cli advanced-distill \
+  --task-name H3K4me1 \
+  --method dkd \
+  --student-model-type bilstm \
+  --teacher-model-path teacher_models/dnabert2_model \
+  --output-dir distillation_results \
+  --num-epochs 10 \
+  --use-wandb
 ```
 
-### List Available Options
+### Tyro CLI Usage Examples
+
+#### Understanding Tyro Commands
+
+Tyro provides a powerful CLI interface with automatic help and validation:
 
 ```bash
-# List all available tasks
-python -m dna_distillation.cli list-tasks
+# Get help for any command
+python -m dna_distillation.cli train-teacher --help
 
-# List all student model types
-python -m dna_distillation.cli list-models
+# Get help for specific parameters
+python -m dna_distillation.cli train-teacher --teacher-model-type --help
 
-# List teacher model types
-python -m dna_distillation.cli list-teacher-models
+# List all available options
+python -m dna_distillation.cli --help
+```
+
+#### Common Tyro Patterns
+
+```bash
+# Boolean flags (use --no- prefix for False)
+--use-mixed-precision          # True
+--no-use-mixed-precision       # False
+
+# Enum choices (auto-completion available)
+--teacher-model-type dna_bert2
+--student-model-type bilstm
+--method dkd
+
+# File paths (auto-completion available)
+--output-dir teacher_models/my_model
+--teacher-model-path teacher_models/dnabert2_model
+
+# Numeric parameters
+--batch-size 4
+--num-train-epochs 10
+--learning-rate 0.0001
+```
+
+#### Advanced Tyro Usage
+
+```bash
+# Multiple tasks in sequence
+for task in H3K4me1 H3K27ac enhancers; do
+  python -m dna_distillation.cli train-teacher \
+    --teacher-model-type dna_bert2 \
+    --task $task \
+    --output-dir teacher_models/dnabert2_$task \
+    --no-use-mixed-precision \
+    --batch-size 4
+done
+
+# Different student models with same teacher
+for student in bilstm cnn bpnet; do
+  python -m dna_distillation.cli advanced-distill \
+    --task-name H3K4me1 \
+    --method dkd \
+    --student-model-type $student \
+    --teacher-model-path teacher_models/dnabert2_model \
+    --output-dir distillation_results/dnabert2_to_$student \
+    --num-epochs 10
+done
+```
+
+## 🎯 Complete Workflow Examples
+
+### Example 1: DNA-BERT2 → BiLSTM Distillation
+
+```bash
+# 1. Train DNA-BERT2 teacher
+./.uv/dnabert2/bin/python -m dna_distillation.cli train-teacher \
+  --teacher-model-type dna_bert2 \
+  --task H3K4me1 \
+  --output-dir teacher_models/dnabert2_h3k4me1 \
+  --no-use-mixed-precision \
+  --batch-size 4 \
+  --num-train-epochs 10
+
+# 2. Distill to BiLSTM student
+python -m dna_distillation.cli advanced-distill \
+  --task-name H3K4me1 \
+  --method dkd \
+  --student-model-type bilstm \
+  --teacher-model-path teacher_models/dnabert2_h3k4me1 \
+  --output-dir distillation_results/dnabert2_to_bilstm \
+  --num-epochs 15 \
+  --use-wandb
+```
+
+### Example 2: Enformer → BPNet Distillation
+
+```bash
+# 1. Train Enformer teacher
+./.uv/enformer/bin/python -m dna_distillation.cli train-teacher \
+  --teacher-model-type enformer \
+  --task H3K27ac \
+  --output-dir teacher_models/enformer_h3k27ac \
+  --num-train-epochs 10
+
+# 2. Distill to BPNet student
+python -m dna_distillation.cli advanced-distill \
+  --task-name H3K27ac \
+  --method dist \
+  --student-model-type bpnet \
+  --teacher-model-path teacher_models/enformer_h3k27ac \
+  --output-dir distillation_results/enformer_to_bpnet \
+  --num-epochs 20 \
+  --use-wandb
+```
+
+### Example 3: Multi-Task Teacher Training
+
+```bash
+# Train DNA-BERT2 on multiple tasks
+for task in H3K4me1 H3K27ac enhancers promoter_all; do
+  ./.uv/dnabert2/bin/python -m dna_distillation.cli train-teacher \
+    --teacher-model-type dna_bert2 \
+    --task $task \
+    --output-dir teacher_models/dnabert2_$task \
+    --no-use-mixed-precision \
+    --batch-size 4 \
+    --num-train-epochs 10
+done
 ```
 
 ## WandB Integration
@@ -134,48 +498,6 @@ wandb runs list
 ```
 
 **Your WandB Account**: `kainoanishida` (kainoanishida-university-of-california-irvine)
-
-## Examples
-
-### Complete Distillation Pipeline
-
-```python
-import dna_distillation as dna
-
-# 1. Create student model
-student = dna.create_student_model(
-    model_type="bilstm",
-    vocab_size=1000,
-    embed_dim=128,
-    hidden_dim=64,
-    num_labels=2
-)
-
-# 2. Load dataset
-from transformers import AutoTokenizer
-tokenizer = AutoTokenizer.from_pretrained("InstaDeepAI/nucleotide-transformer-500m-human-ref")
-
-datasets = dna.load_nucleotide_task(
-    task_name="H3K4me1",
-    tokenizer=tokenizer,
-    max_length=512
-)
-
-# 3. Run distillation
-results = dna.run_distillation(
-    student_model=student,
-    teacher_model_path="teacher_models/my_teacher",
-    train_dataset=datasets['train'],
-    val_dataset=datasets['validation'],
-    method="dkd",
-    num_epochs=10,
-    batch_size=32,
-    learning_rate=0.0001
-)
-
-print(f"Final F1 Score: {results['final_f1']:.4f}")
-print(f"Final MCC: {results['final_mcc']:.4f}")
-```
 
 ## Advanced Features
 
@@ -206,33 +528,31 @@ print(f"Final MCC: {results['final_mcc']:.4f}")
 - **Enformer**: Regulatory element prediction model (~12GB GPU memory)
 - **Caduceus**: Bidirectional state space model (~6GB GPU memory)
 
-## Train DNABERT-2 Teacher (matches research script)
+## Per-Model Environments with uv
 
-DNABERT-2 training can be run inside an isolated uv environment that mirrors the research repo pins.
-
-Setup once:
+For maximum compatibility and reproducibility, use isolated `uv` environments:
 
 ```bash
-# Create env and install requirements
+# DNA-BERT2 environment
 uv venv .uv/dnabert2 -p 3.10
-uv pip install -p .uv/dnabert2 -r envs/dnabert2-req.txt
+uv pip install -r envs/dnabert2-req.txt -p .uv/dnabert2
+uv pip install -p .uv/dnabert2 matplotlib seaborn plotly rich tyro==0.5.7
+
+# Enformer environment
+uv venv .uv/enformer -p 3.10
+uv pip install -r envs/enformer-req.txt -p .uv/enformer
+uv pip install -p .uv/enformer matplotlib seaborn plotly rich tyro==0.5.7
+
+# Nucleotide Transformer 500M environment
+uv venv .uv/nt500m -p 3.10
+uv pip install -r envs/nt500m-req.txt -p .uv/nt500m
+uv pip install -p .uv/nt500m matplotlib seaborn plotly rich tyro==0.5.7
+
+# Caduceus environment (Linux only)
+uv venv .uv/caduceus -p 3.10
+uv pip install -r envs/caduceus-req.txt -p .uv/caduceus
+uv pip install -p .uv/caduceus matplotlib seaborn plotly rich tyro==0.5.7
 ```
-
-Run training (Tyro CLI inside the env):
-
-```bash
-.uv/dnabert2/bin/python -m dna_distillation.cli train-teacher \
-  --teacher-model-type dna_bert2 \
-  --task H3K4me1 \
-  --output-dir teacher_models/dnabert2_model \
-  --no-use-mixed-precision \
-  --batch-size 4
-```
-
-Notes:
-
-- This path pins the DNABERT-2 tokenizer/model commit and force-downloads, loads task-specific splits, tokenizes with padding="max_length" (512), and resizes embeddings to match tokenizer vocab.
-- On CPU/MPS training will be slow; for quick sanity checks use `--batch-size 1 --num-train-epochs 1` or run on a CUDA machine.
 
 ## Documentation
 

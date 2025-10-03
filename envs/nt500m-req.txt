@@ -1,5 +1,4 @@
 # NT-500M teacher (from environment_nt_clean.yaml)
-python==3.10.*
 torch==2.6.0
 torchvision==0.21.0
 transformers==4.48.1
