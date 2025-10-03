@@ -1,0 +1,16 @@
+# DNABERT2 teacher (from environment_dnabert2.yml)
+torch==1.13.1
+transformers==4.29.2
+tokenizers==0.13.3
+datasets==3.1.0
+accelerate==0.20.3
+numpy==1.24.4
+pandas==2.0.3
+scikit-learn==1.2.2
+scipy==1.10.1
+einops==0.6.1
+peft==0.3.0
+pyarrow==17.0.0
+tqdm==4.67.1
+wandb==0.19.11
+

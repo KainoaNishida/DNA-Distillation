@@ -240,7 +240,7 @@ class ListModels:
     """List all available student model types."""
     
     def __init__(self):
-        models = ["bilstm", "xlstm", "mamba", "hyena", "caduceus", "cnn", "mlp", "rnn"]
+        models = ["bilstm", "xlstm", "mamba", "hyena", "caduceus", "cnn", "mlp", "rnn", "bpnet"]
         
         rprint(f" [bold blue]Available Student Model Types ({len(models)})[/bold blue]")
         
@@ -257,7 +257,8 @@ class ListModels:
             "caduceus": "Caduceus bidirectional state space model",
             "cnn": "Convolutional neural network",
             "mlp": "Multi-layer perceptron",
-            "rnn": "Recurrent neural network"
+            "rnn": "Recurrent neural network",
+            "bpnet": "BPNet with dilated convolutions and attention"
         }
         
         for model in models:
@@ -270,7 +271,13 @@ class ListTeacherModels:
     """List all available teacher model types."""
     
     def __init__(self):
-        teacher_models = ["nucleotide_transformer_500m", "nucleotide_transformer_2b5"]
+        teacher_models = [
+            "nucleotide_transformer_500m", 
+            "nucleotide_transformer_2b5",
+            "dna_bert2",
+            "enformer", 
+            "caduceus"
+        ]
         
         rprint(f"[bold blue]Available Teacher Model Types ({len(teacher_models)})[/bold blue]")
         
@@ -282,12 +289,18 @@ class ListTeacherModels:
         
         model_descriptions = {
             "nucleotide_transformer_500m": "500M parameter Nucleotide Transformer (Human Reference)",
-            "nucleotide_transformer_2b5": "2.5B parameter Nucleotide Transformer (Multi-species)"
+            "nucleotide_transformer_2b5": "2.5B parameter Nucleotide Transformer (Multi-species)",
+            "dna_bert2": "DNA-BERT2 117M parameter model",
+            "enformer": "Enformer model for regulatory element prediction",
+            "caduceus": "Caduceus bidirectional state space model"
         }
         
         memory_requirements = {
             "nucleotide_transformer_500m": "~8GB GPU memory",
-            "nucleotide_transformer_2b5": "~24GB GPU memory"
+            "nucleotide_transformer_2b5": "~24GB GPU memory",
+            "dna_bert2": "~4GB GPU memory",
+            "enformer": "~12GB GPU memory",
+            "caduceus": "~6GB GPU memory"
         }
         
         for model in teacher_models:
@@ -806,7 +819,7 @@ class SimpleDistill:
         
         Args:
             method: Distillation method (dkd, dist, reviewkd, logit_std)
-            student_model_type: Type of student model (bilstm, cnn, mlp, rnn, xlstm, mamba, hyena, caduceus)
+            student_model_type: Type of student model (bilstm, cnn, mlp, rnn, xlstm, mamba, hyena, caduceus, bpnet)
             num_epochs: Number of training epochs
             batch_size: Batch size for training
             learning_rate: Learning rate for optimizer
@@ -1207,7 +1220,10 @@ class TrainTeacher:
         # Show model info
         model_info = {
             "nucleotide_transformer_500m": "500M parameter Nucleotide Transformer (Human Reference) - ~8GB GPU memory",
-            "nucleotide_transformer_2b5": "2.5B parameter Nucleotide Transformer (Multi-species) - ~24GB GPU memory"
+            "nucleotide_transformer_2b5": "2.5B parameter Nucleotide Transformer (Multi-species) - ~24GB GPU memory",
+            "dna_bert2": "DNA-BERT2 117M parameter model - ~4GB GPU memory",
+            "enformer": "Enformer model for regulatory element prediction - ~12GB GPU memory",
+            "caduceus": "Caduceus bidirectional state space model - ~6GB GPU memory"
         }
         
         if teacher_model_type in model_info:
@@ -1223,9 +1239,11 @@ class TrainTeacher:
         
         # Train teacher model
         rprint("Loading dataset...")
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained("InstaDeepAI/nucleotide-transformer-500m-human-ref")
         datasets = dna.load_nucleotide_task(
             task_name=task,
-            tokenizer_name="InstaDeepAI/nucleotide-transformer-500m-human-ref",
+            tokenizer=tokenizer,
             max_length=max_length
         )
         
@@ -1244,7 +1262,6 @@ class TrainTeacher:
             "evaluation_strategy": evaluation_strategy,
             "load_best_model_at_end": load_best_model_at_end,
             "metric_for_best_model": metric_for_best_model,
-            "early_stopping_patience": early_stopping_patience,
             "output_dir": output_dir,
             "logging_steps": 50,
             "report_to": ["wandb"] if "wandb" in sys.modules else None,

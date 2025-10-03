@@ -453,6 +453,145 @@ class RNNStudent(DNAStudentModel):
         return {"loss": loss, "logits": logits}
 
 
+class BPNetStudent(DNAStudentModel):
+    """BPNet student model for DNA sequence classification."""
+    
+    def __init__(
+        self,
+        vocab_size: int,
+        embed_dim: int,
+        num_labels: int,
+        input_length: int = 1000,
+        num_filters: int = 64,
+        num_dilated_convs: int = 8,
+        dropout: float = 0.1,
+        use_attention: bool = True,
+        use_batchnorm: bool = True,
+        **kwargs
+    ):
+        super().__init__(vocab_size, embed_dim, num_labels)
+        self.input_length = input_length
+        self.num_filters = num_filters
+        
+        # One-hot encoding layer (4 nucleotides: A, C, G, T)
+        self.one_hot = nn.Conv1d(4, num_filters, kernel_size=1)
+        
+        # Dilated convolution blocks
+        self.dilated_convs = nn.ModuleList()
+        for i in range(num_dilated_convs):
+            dilation = 2 ** i
+            self.dilated_convs.append(
+                DilatedConvBlock(
+                    num_filters, num_filters, 
+                    kernel_size=3, dilation=dilation,
+                    dropout=dropout, use_batchnorm=use_batchnorm
+                )
+            )
+        
+        # Attention mechanism
+        if use_attention:
+            self.attention = AttentionModule(num_filters)
+        else:
+            self.attention = None
+        
+        # Global pooling and classification
+        self.global_pool = nn.AdaptiveAvgPool1d(1)
+        self.classifier = nn.Sequential(
+            nn.Linear(num_filters, num_filters // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(num_filters // 2, num_labels)
+        )
+    
+    def forward(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None,
+                labels: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
+        # One-hot encode input (assuming input_ids are in range 0-3)
+        batch_size, seq_len = input_ids.shape
+        
+        # Convert to one-hot: [batch, seq_len, 4] -> [batch, 4, seq_len]
+        one_hot = F.one_hot(input_ids, num_classes=4).float()
+        one_hot = one_hot.transpose(1, 2)  # [batch, 4, seq_len]
+        
+        # Initial convolution
+        x = self.one_hot(one_hot)  # [batch, num_filters, seq_len]
+        
+        # Apply dilated convolutions
+        for conv in self.dilated_convs:
+            x = conv(x)
+        
+        # Attention mechanism
+        if self.attention is not None:
+            x = self.attention(x)
+        
+        # Global pooling
+        pooled = self.global_pool(x).squeeze(-1)  # [batch, num_filters]
+        
+        # Classification
+        logits = self.classifier(pooled)
+        
+        # Compute loss
+        loss = F.cross_entropy(logits, labels) if labels is not None else None
+        
+        return {"loss": loss, "logits": logits}
+
+
+class DilatedConvBlock(nn.Module):
+    """Dilated convolution block for BPNet."""
+    
+    def __init__(
+        self, 
+        in_channels: int, 
+        out_channels: int, 
+        kernel_size: int = 3,
+        dilation: int = 1,
+        dropout: float = 0.1,
+        use_batchnorm: bool = True
+    ):
+        super().__init__()
+        self.conv = nn.Conv1d(
+            in_channels, out_channels, 
+            kernel_size=kernel_size, 
+            dilation=dilation,
+            padding=(kernel_size - 1) * dilation // 2
+        )
+        self.bn = nn.BatchNorm1d(out_channels) if use_batchnorm else None
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(dropout)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv(x)
+        if self.bn is not None:
+            x = self.bn(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+        return x
+
+
+class AttentionModule(nn.Module):
+    """Attention module for BPNet."""
+    
+    def __init__(self, hidden_dim: int):
+        super().__init__()
+        self.attention = nn.Linear(hidden_dim, 1)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: [batch, hidden_dim, seq_len]
+        batch_size, hidden_dim, seq_len = x.shape
+        
+        # Transpose for attention: [batch, seq_len, hidden_dim]
+        x_t = x.transpose(1, 2)
+        
+        # Compute attention weights
+        attn_weights = self.attention(x_t)  # [batch, seq_len, 1]
+        attn_weights = F.softmax(attn_weights, dim=1)  # [batch, seq_len, 1]
+        
+        # Apply attention
+        attended = x_t * attn_weights  # [batch, seq_len, hidden_dim]
+        attended = attended.transpose(1, 2)  # [batch, hidden_dim, seq_len]
+        
+        return attended
+
+
 # Model factory function
 def create_student_model(
     model_type: str,
@@ -474,6 +613,7 @@ def create_student_model(
         "cnn": CNNStudent,
         "mlp": MLPStudent,
         "rnn": RNNStudent,
+        "bpnet": BPNetStudent,
     }
     
     if model_type not in model_map:
@@ -499,6 +639,31 @@ def create_student_model(
             kernel_size=kernel_size,
             num_res_blocks=num_res_blocks,
             use_one_hot=use_one_hot,
+            padding_idx=padding_idx,
+            **kwargs
+        )
+    elif model_type == "bpnet":
+        # Extract BPNet-specific parameters
+        input_length = kwargs.pop("input_length", 1000)
+        num_filters = kwargs.pop("num_filters", 64)
+        num_dilated_convs = kwargs.pop("num_dilated_convs", 8)
+        dropout = kwargs.pop("dropout", 0.1)
+        use_attention = kwargs.pop("use_attention", True)
+        use_batchnorm = kwargs.pop("use_batchnorm", True)
+        # Remove parameters that BPNet doesn't use
+        kwargs.pop("num_layers", None)
+        kwargs.pop("hidden_dim", None)
+        
+        return ModelClass(
+            vocab_size=vocab_size,
+            embed_dim=embed_dim,
+            num_labels=num_labels,
+            input_length=input_length,
+            num_filters=num_filters,
+            num_dilated_convs=num_dilated_convs,
+            dropout=dropout,
+            use_attention=use_attention,
+            use_batchnorm=use_batchnorm,
             padding_idx=padding_idx,
             **kwargs
         )

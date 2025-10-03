@@ -1,0 +1,19 @@
+# Enformer teacher (from environment_enformer.yml)
+torch==2.6.0
+transformers==4.52.3
+tokenizers==0.21.1
+datasets==3.6.0
+accelerate==1.7.0
+numpy==2.0.2
+enformer-pytorch==0.8.10
+einops==0.8.1
+einx==0.3.0
+vector-quantize-pytorch==1.22.16
+polars==1.30.0
+pandas==2.2.3
+scikit-learn==1.6.1
+scipy==1.13.1
+torchmetrics==1.7.1
+tqdm==4.67.1
+wandb==0.19.11
+

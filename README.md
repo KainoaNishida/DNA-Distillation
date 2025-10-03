@@ -4,11 +4,19 @@ A powerful Python package for DNA sequence analysis and knowledge distillation, 
 
 ## Features
 
-- **Advanced Student Models**: BiLSTM, XLSTM, Mamba, Hyena, Caduceus, CNN with residual blocks, MLP, RNN
+- **Advanced Student Models**: BiLSTM, XLSTM, Mamba, Hyena, Caduceus, CNN with residual blocks, MLP, RNN, BPNet
 - **Knowledge Distillation Methods**: DKD, DIST, ReviewKD, Logit Standardization (CVPR 2024)
-- **Teacher Model Training**: Support for 500M and 2.5B Nucleotide Transformer models
+- **Teacher Model Training**: Support for Nucleotide Transformer (500M/2.5B), DNA-BERT2, Enformer, and Caduceus models
 - **Real-time Monitoring**: WandB integration for experiment tracking
 - **Production Ready**: Clean CLI interface and comprehensive documentation
+
+## ⚠️ Known Issues
+
+- **NumPy Compatibility**: There's a known compatibility issue between the `datasets` library and NumPy 2.0. The package works with NumPy 1.x versions.
+- **Model Dependencies**: Some teacher models require additional packages:
+  - **DNA-BERT2**: Requires `einops` (included in requirements)
+  - **Enformer**: Requires `enformer-pytorch` (included in requirements)
+  - **Caduceus**: Requires `mamba-ssm` (not included due to compilation issues on macOS)
 
 ## Quick Start
 
@@ -16,6 +24,9 @@ A powerful Python package for DNA sequence analysis and knowledge distillation, 
 
 ```bash
 pip install dna-distillation
+# or use per-model uv envs (recommended for teacher models)
+# e.g., DNABERT2 teacher training
+bash scripts/train_dnabert2_uv.sh H3K4me1 teacher_models/dnabert2
 ```
 
 ### Basic Usage
@@ -52,6 +63,7 @@ python -m dna_distillation.cli simple-distill --method dkd --student-model-type 
 # Test different student models
 python -m dna_distillation.cli simple-distill --method dkd --student-model-type cnn --num-epochs 3
 python -m dna_distillation.cli simple-distill --method dist --student-model-type mamba --num-epochs 3
+python -m dna_distillation.cli simple-distill --method dkd --student-model-type bpnet --num-epochs 3
 ```
 
 ### Create Student Models
@@ -72,6 +84,21 @@ python -m dna_distillation.cli train-teacher --teacher-model-type nucleotide_tra
 
 # Train 2.5B teacher model
 python -m dna_distillation.cli train-teacher --teacher-model-type nucleotide_transformer_2b5 --task H3K4me1 --output-dir teacher_models/2b5_model
+
+# Train DNA-BERT2 teacher model
+python -m dna_distillation.cli train-teacher --teacher-model-type dna_bert2 --task H3K4me1 --output-dir teacher_models/dnabert2_model
+
+# Train Enformer teacher model
+python -m dna_distillation.cli train-teacher --teacher-model-type enformer --task H3K4me1 --output-dir teacher_models/enformer_model
+
+# Train Caduceus teacher model
+python -m dna_distillation.cli train-teacher --teacher-model-type caduceus --task H3K4me1 --output-dir teacher_models/caduceus_model
+
+# Or run with uv-based per-model scripts (isolated envs)
+bash scripts/train_nt500m_uv.sh H3K4me1 teacher_models/nt500m_model
+bash scripts/train_dnabert2_uv.sh H3K4me1 teacher_models/dnabert2_model
+bash scripts/train_enformer_uv.sh H3K4me1 teacher_models/enformer_model
+bash scripts/train_caduceus_uv.sh H3K4me1 teacher_models/caduceus_model
 ```
 
 ### Run Advanced Distillation
@@ -169,11 +196,43 @@ print(f"Final MCC: {results['final_mcc']:.4f}")
 - **CNN**: Convolutional network with residual blocks
 - **MLP**: Multi-layer perceptron
 - **RNN**: Recurrent neural network
+- **BPNet**: Dilated convolutions with attention mechanism
 
 ### Teacher Models
 
 - **500M Nucleotide Transformer**: Human reference genome (~8GB GPU memory)
 - **2.5B Nucleotide Transformer**: Multi-species genome (~24GB GPU memory)
+- **DNA-BERT2**: 117M parameter DNA foundation model (~4GB GPU memory)
+- **Enformer**: Regulatory element prediction model (~12GB GPU memory)
+- **Caduceus**: Bidirectional state space model (~6GB GPU memory)
+
+## Train DNABERT-2 Teacher (matches research script)
+
+DNABERT-2 training can be run inside an isolated uv environment that mirrors the research repo pins.
+
+Setup once:
+
+```bash
+# Create env and install requirements
+uv venv .uv/dnabert2 -p 3.10
+uv pip install -p .uv/dnabert2 -r envs/dnabert2-req.txt
+```
+
+Run training (Tyro CLI inside the env):
+
+```bash
+.uv/dnabert2/bin/python -m dna_distillation.cli train-teacher \
+  --teacher-model-type dna_bert2 \
+  --task H3K4me1 \
+  --output-dir teacher_models/dnabert2_model \
+  --no-use-mixed-precision \
+  --batch-size 4
+```
+
+Notes:
+
+- This path pins the DNABERT-2 tokenizer/model commit and force-downloads, loads task-specific splits, tokenizes with padding="max_length" (512), and resizes embeddings to match tokenizer vocab.
+- On CPU/MPS training will be slow; for quick sanity checks use `--batch-size 1 --num-train-epochs 1` or run on a CUDA machine.
 
 ## Documentation
 

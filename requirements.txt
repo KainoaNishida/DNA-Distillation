@@ -18,6 +18,11 @@ datasets>=2.10.0
 tokenizers>=0.13.0
 scikit-learn>=1.0.0
 
+# Model-specific packages
+bpnet-pytorch>=0.0.2
+enformer-pytorch>=0.8.11
+einops>=0.3.0
+
 # Data processing and visualization
 matplotlib>=3.5.0
 seaborn>=0.11.0
