@@ -10,7 +10,7 @@ A powerful Python package for DNA sequence analysis and knowledge distillation, 
 - **Real-time Monitoring**: WandB integration for experiment tracking
 - **Production Ready**: Clean CLI interface and comprehensive documentation
 
-## ⚠️ Known Issues
+## Known Issues
 
 - **NumPy Compatibility**: There's a known compatibility issue between the `datasets` library and NumPy 2.0. The package works with NumPy 1.x versions.
 - **Model Dependencies**: Some teacher models require additional packages:
@@ -70,7 +70,7 @@ dna.run_distillation(
 )
 ```
 
-## 🚀 Complete Training Pipeline
+## Complete Training Pipeline
 
 ### Step 1: Train Teacher Models
 
@@ -198,7 +198,7 @@ python -m dna_distillation.cli advanced-distill \
   --use-wandb
 ```
 
-## 📋 Complete CLI Reference
+## Complete CLI Reference
 
 ### Teacher Model Training Commands
 
@@ -424,7 +424,7 @@ for student in bilstm cnn bpnet; do
 done
 ```
 
-## 🎯 Complete Workflow Examples
+## Complete Workflow Examples
 
 ### Example 1: DNA-BERT2 → BiLSTM Distillation
 
@@ -487,17 +487,142 @@ done
 
 ## WandB Integration
 
-All experiments are automatically logged to WandB for real-time monitoring:
+All experiments are automatically logged to WandB for real-time monitoring and visualization.
+
+### WandB Setup
+
+#### 1. Create WandB Account
+
+1. Go to [https://wandb.ai](https://wandb.ai)
+2. Sign up for a free account
+3. Verify your email address
+
+#### 2. Install WandB
 
 ```bash
-# View your experiments
-wandb status
+# Install WandB (included in requirements)
+pip install wandb
 
-# View runs in terminal
-wandb runs list
+# Or install in specific uv environment
+uv pip install -p .uv/dnabert2 wandb
 ```
 
-**Your WandB Account**: `kainoanishida` (kainoanishida-university-of-california-irvine)
+#### 3. Login to WandB
+
+```bash
+# Login to your WandB account
+wandb login
+
+# You'll be prompted to:
+# 1. Go to https://wandb.ai/authorize
+# 2. Copy your API key
+# 3. Paste it in the terminal
+```
+
+#### 4. Verify Setup
+
+```bash
+# Check if you're logged in
+wandb status
+
+# Should show something like:
+# wandb: Currently logged in as: your-username (your-username-organization)
+# wandb: wandb version 0.19.11 is available!  To upgrade, please run:
+# wandb:  $ pip install wandb --upgrade
+```
+
+### Using WandB with DNA Distillation
+
+#### Automatic Logging
+
+All training commands automatically log to WandB when `--use-wandb` flag is used:
+
+```bash
+# Teacher model training with WandB
+python -m dna_distillation.cli train-teacher \
+  --teacher-model-type dna_bert2 \
+  --task H3K4me1 \
+  --output-dir teacher_models/dnabert2_model \
+  --use-wandb
+
+# Student model distillation with WandB
+python -m dna_distillation.cli advanced-distill \
+  --task-name H3K4me1 \
+  --method dkd \
+  --student-model-type bilstm \
+  --teacher-model-path teacher_models/dnabert2_model \
+  --output-dir distillation_results \
+  --use-wandb
+```
+
+#### WandB Project Organization
+
+Experiments are automatically organized by project:
+
+- **Teacher Training**: `huggingface` (for DNA-BERT2, NT500M)
+- **Enformer Training**: `EnformerRevised-h800-epo100-maxlen1024-bz16-pretrained`
+- **Caduceus Training**: `Caduceus-nt-revised-finetune`
+- **Student Distillation**: `dna-distillation` (default)
+
+#### Viewing Experiments
+
+```bash
+# View your experiments in terminal
+wandb runs list
+
+# View specific project
+wandb runs list --project huggingface
+
+# View runs for specific task
+wandb runs list --project huggingface --tag H3K4me1
+```
+
+#### WandB Web Interface
+
+1. Go to [https://wandb.ai](https://wandb.ai)
+2. Navigate to your projects
+3. View real-time metrics, loss curves, and model performance
+4. Compare different experiments
+5. Download model checkpoints and logs
+
+#### WandB Features
+
+- **Real-time Metrics**: Live loss curves, accuracy, F1-score, MCC
+- **Model Tracking**: Automatic model checkpointing and versioning
+- **Hyperparameter Logging**: All training parameters automatically logged
+- **System Monitoring**: GPU/CPU usage, memory consumption
+- **Artifact Storage**: Model weights, tokenizers, and configs
+- **Experiment Comparison**: Side-by-side comparison of different runs
+- **Collaboration**: Share experiments with team members
+
+#### Troubleshooting WandB
+
+```bash
+# If you get login errors
+wandb login --relogin
+
+# If you want to run offline
+wandb offline
+
+# To go back online
+wandb online
+
+# Check WandB status
+wandb status
+
+# View WandB logs
+wandb logs
+```
+
+#### Example WandB Dashboard
+
+After running experiments, you'll see:
+
+- **Loss Curves**: Training and validation loss over time
+- **Metrics**: F1-score, MCC, accuracy progression
+- **System Info**: GPU utilization, memory usage
+- **Hyperparameters**: All training arguments and model configs
+- **Model Artifacts**: Saved checkpoints and final models
 
 ## Advanced Features
 
