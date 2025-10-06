@@ -12,7 +12,7 @@ pandas==2.0.3
 pyarrow==17.0.0
 einops==0.8.1
 lightning-utilities==0.11.9
-torchmetrics==1.5.2
+torchmetrics==1.8.2
 wandb==0.20.0
 # Requires CUDA + mamba-ssm==2.2.2 (install only on Linux with CUDA)
 

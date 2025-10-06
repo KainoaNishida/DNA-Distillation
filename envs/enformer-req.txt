@@ -13,7 +13,7 @@ polars==1.30.0
 pandas==2.2.3
 scikit-learn==1.6.1
 scipy==1.13.1
-torchmetrics==1.7.1
+torchmetrics==1.8.2
 tqdm==4.67.1
 wandb==0.19.11
 
