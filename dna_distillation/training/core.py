@@ -379,7 +379,7 @@ def train_teacher_model(
     # Load datasets if not provided
     if datasets is None and teacher_model_type != "enformer":
         max_length = training_config.get("max_length", 512) if training_config else 512
-        if teacher_model_type == "dna_bert2":
+        if teacher_model_type in ("nucleotide_transformer_500m", "nucleotide_transformer_2b5", "dna_bert2"):
             # Exact per-task splits, tokenization & formatting as in the research script
             train_ds = load_dataset(
                 "InstaDeepAI/nucleotide_transformer_downstream_tasks_revised",
@@ -422,9 +422,9 @@ def train_teacher_model(
         else:
             datasets = load_nucleotide_task(
                 task_name=task_name,
-                            tokenizer=tokenizer,
-                            max_length=max_length,
-        )
+                tokenizer=tokenizer,
+                max_length=max_length,
+            )
     
     # Get number of labels
     num_labels = get_num_labels(task_name)
@@ -990,8 +990,14 @@ def train_teacher_model(
             "logging_steps": 50,
         }
     
-    # Create training arguments
-    training_args = TrainingArguments(**training_config)
+    # Mirror kd-research-code Trainer args to avoid NumPy 2.0 formatting pitfalls
+    # Ensure labels are preserved and no column dropping occurs
+    training_args = TrainingArguments(
+        **training_config,
+        remove_unused_columns=False,
+        label_names=["labels"],
+        dataloader_drop_last=True,
+    )
     
     # Data collator (matches research script behavior)
     data_collator = DataCollatorWithPadding(tokenizer)

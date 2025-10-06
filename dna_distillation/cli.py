@@ -129,6 +129,8 @@ class Distill:
         student_model_type: str = "bilstm",
         teacher_checkpoint_dir: str = "./teacher_checkpoints",
         output_dir: str = "./distilled_models",
+        # Tokenizer
+        tokenizer_name: str = "InstaDeepAI/nucleotide-transformer-500m-human-ref",
         # Model parameters
         vocab_size: int = 1000,
         embed_dim: int = 128,
@@ -172,6 +174,7 @@ class Distill:
             student_model_type=student_model_type,
             teacher_checkpoint_dir=teacher_checkpoint_dir,
             output_dir=output_dir,
+            tokenizer_name=tokenizer_name,
             # Model parameters
             vocab_size=vocab_size,
             embed_dim=embed_dim,
