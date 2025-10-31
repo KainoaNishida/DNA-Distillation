@@ -11,6 +11,6 @@ scipy==1.15.1
 scikit-learn==1.6.1
 pandas==2.2.3
 tqdm==4.67.1
-safetensors==0.5.2
+safetensors==0.6.2
 torchmetrics==1.7.1
 
